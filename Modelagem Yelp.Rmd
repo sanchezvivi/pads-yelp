@@ -327,8 +327,11 @@ variance_pct %>%
 
 ## Referências
 
-- [Data Science, Marketing and Business](https://datascience.insper.edu.br/datascience.pdf)
-- 
+- Neumann, D. Material de aula do cursos Big Data e Computação em Nuvem
+- Mendonça, T. Material de aula do curso Modelagem Preditiva Avançada
+- [Fernandez, P. Marques. P. Data Science, Marketing and Business](https://datascience.insper.edu.br/datascience.pdf)
+- [Rahimi, S.; Mottahedi, S.; Liu, X. The Geography of Taste: Using Yelp to Study Urban Culture. ISPRS Int. J. Geo-Inf. 2018, 7, 376.](https://www.mdpi.com/2220-9964/7/9/376?type=check_update&version=1)
+
 
 
 
