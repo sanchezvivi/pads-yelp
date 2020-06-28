@@ -3,8 +3,9 @@ Sistema de Recomendação baseado em dados do Yelp desenvolvido para as discipli
 
 
 Autores:
-Marcelo Franceschini
-Rafael Costa
-Viviane Sanchez
 
-Dados disponíveis no [Yelp](https://www.yelp.com/dataset)
+- Marcelo Franceschini
+- Rafael Costa
+- Viviane Sanchez
+
+* Dados disponíveis no [Yelp](https://www.yelp.com/dataset)
