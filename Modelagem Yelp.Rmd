@@ -40,8 +40,6 @@ yelp_dist_raw <- list.files(path = 'output/yelp_dist.csv/',
                        pattern = "*.csv",
                        full.names = TRUE) %>% 
             map_df(~read_csv(.))
-
-
 ```
 
 ## yelp - dist
@@ -135,6 +133,7 @@ kclusts <-
 
 
 
+
 ## Yelp - base completa 
 
 ```{r}
@@ -151,18 +150,6 @@ skim(yelp)
 ```
 
 
-```{r}
-
-yelp %>% 
-  ggplot(aes(longitude, latitude, color = stars)) +
-  geom_point(size = 0.5, alpha = 0.7) +
-  scale_color_gradient(low = 'skyblue', high = 'darkred', labels = scales::label_number_si()) +
-  labs(title = 'Review Stars')
-
-
-```
-
-
 ## Latitude vs Longitude
 
 ```{r}
@@ -171,7 +158,7 @@ gg_lat_lon <- function(col_ref, title_string){
       yelp %>% 
         ggplot(aes(longitude, latitude, color = col_ref)) +
         geom_point(size = 0.5, alpha = 0.7) +
-        scale_color_gradient(low = 'skyblue', high = 'darkred', labels = scales::label_number_si()) +
+        scale_color_gradient(low = 'skyblue', high = 'gold', labels = scales::label_number_si()) +
         labs(title = title_string)
 }
 
