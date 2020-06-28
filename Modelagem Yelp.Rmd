@@ -16,39 +16,33 @@ library(tidymodels)
 library(tidytext)
 library(skimr)
 library(ggrepel)
+library(ggdendro)
 library(factoextra)
 library(vip)
 library(doParallel)
 library(vegan)
-
-setwd("~/Documents/Data Science/Insper/2 Atividade Integradora")
+library(leaps)
 
 ```
 
+
+## Leitura de arquivos
 
 ```{r eval=FALSE, include=FALSE}
-#ler muiltiplos csv
 
-?list.files
-temp = list.files(path = 'yelp_dist.csv', pattern="*.csv")
-myfiles = lapply('yelp_dist.csv/'+ temp, read.delim)
+yelp_raw <- list.files(path = 'output/yelp.csv/', 
+                       pattern = "*.csv",
+                       full.names = TRUE) %>% 
+            map_df(~read_csv(.))
+
+
+yelp_dist_raw <- list.files(path = 'output/yelp_dist.csv/', 
+                       pattern = "*.csv",
+                       full.names = TRUE) %>% 
+            map_df(~read_csv(.))
+
 
 ```
-
-
-
-```{r}
-
-yelp_raw <- read_csv("yelp.csv/part-00000-bc7a26fd-1b72-4bf0-a3bf-feab5febdaae-c000.csv")
-
-yelp_dist_raw <- read_csv("yelp_dist.csv/part-00000-15e572e8-d14f-44b0-8859-5e3cfa796b43-c000.csv", 
-                          skip_empty_rows = TRUE, na = c('',0))
-
-
-?read_csv
-
-```
-
 
 ## yelp - dist
 
@@ -96,60 +90,6 @@ ggdendrogram(hc, rotate = TRUE, labels = TRUE) +
 
 ```
 
-
-## Yelp - base completa
-
-```{r}
-
-skim(yelp_raw)
-
-yelp <- yelp_raw %>% 
-  #select(-name_bz,-name_usr, -city, -address, -review_id) %>% 
-  #filter(state == 'ON', .preserve = FALSE ) %>% 
-  select(-elite_usr) %>% 
-  mutate(yelping_since = as.Date(yelping_since),
-         date = as.Date(date))
-  
-
-skim(yelp)
-
-```
-
-
-## Split
-
-```{r}
-
-split <- initial_split(yelp, prop = 0.8)
-
-train <- training(split)
-test <- testing(split)
-
-```
-
-
-## PCA
-
-```{r}
-
-rec_pca <- recipe( ~ ., train) %>% 
-  update_role(business_id, user_id, name_bz, new_role = 'id') %>% 
-  step_date(date, yelping_since, features = c("dow", "month","year")) %>% 
-  step_other(categories, threshold = 0.005) %>% 
-  step_other(postal_code, threshold = 0.01) %>% 
-  step_dummy(all_nominal(), -'business_id',-'user_id',-'name_bz') %>%
-  step_normalize(all_numeric()) %>% 
-  prep()
-
-yelp_juice <- juice(rec_pca)
-
-skim(yelp_juice)
-
-#pca_train  <- juice(rec_pca) 
-
-```
-
-
 ## hclust
 
 
@@ -188,6 +128,204 @@ kclusts <-
         select(-user_id, -business_id, -date, -yelping_since) %>% 
         get_dist(method = "manhattan") %>%  
         hclust(method = "complete")
+
+
+```
+
+
+
+
+## Yelp - base completa 
+
+```{r}
+
+skim(yelp_raw)
+
+yelp <- yelp_raw %>% 
+        mutate(yelping_since = as.Date(yelping_since),
+         date = as.Date(date))
+  
+
+skim(yelp)
+
+```
+
+
+```{r}
+
+yelp %>% 
+  ggplot(aes(longitude, latitude, color = stars)) +
+  geom_point(size = 0.5, alpha = 0.7) +
+  scale_color_gradient(low = 'skyblue', high = 'darkred', labels = scales::label_number_si()) +
+  labs(title = 'Review Stars')
+
+
+```
+
+```{r}
+
+yelp %>% 
+  ggplot(aes(longitude, latitude, color = stars_usr)) +
+  geom_point(size = 0.5, alpha = 0.7) +
+  scale_color_gradient(low = 'skyblue', high = 'darkred', labels = scales::label_number_si()) +
+  labs(title = 'Average Stars by user')
+
+```
+
+
+
+```{r}
+
+yelp %>% 
+  ggplot(aes(longitude, latitude, color = stars)) +
+  geom_point(size = 0.5, alpha = 0.7) +
+  scale_color_gradient(low = 'skyblue', high = 'darkred', labels = scales::label_number_si()) +
+  labs(title = 'Review Stars')
+
+
+```
+
+```{r}
+
+yelp %>% 
+  ggplot(aes(longitude, latitude, color = stars_bz)) +
+  geom_point(size = 0.5, alpha = 0.7) +
+  scale_color_gradient(low = 'skyblue', high = 'gold', labels = scales::label_number_si()) +
+  labs(title = 'Average Stars by Business')
+
+```
+
+
+```{r}
+
+yelp %>% 
+  ggplot(aes(longitude, latitude, color = review_count)) +
+  geom_point(size = 0.5, alpha = 0.7) +
+  scale_color_gradient(low = 'skyblue', high = 'green', labels = scales::label_number_si()) +
+  labs(title = 'Review count by Business')
+
+```
+
+
+## Split
+
+```{r}
+
+split <- initial_split(yelp, prop = 0.8)
+
+train <- training(split)
+test <- testing(split)
+
+```
+
+
+## Recipe
+
+```{r}
+
+rec <- recipe( ~ ., train) %>% 
+  update_role(business_id, user_id, name_bz, new_role = 'id') %>% 
+  step_date(date, yelping_since, features = c("dow", "month","year")) %>% 
+  step_other(categories, threshold = 0.005) %>% 
+  step_other(postal_code, threshold = 0.01) %>% 
+  step_dummy(all_nominal(), -'business_id',-'user_id',-'name_bz') %>%
+  step_normalize(all_numeric()) %>% 
+  step_naomit(all_predictors())
+
+yelp_juice <- juice(prep(rec))
+
+skim(yelp_juice)
+
+```
+
+
+
+## PCA
+
+```{r}
+
+rec_pca <- recipe( ~ ., train) %>% 
+  update_role(business_id, user_id, name_bz, new_role = 'id') %>% 
+  step_date(date, yelping_since, features = c("dow", "month","year")) %>% 
+  #step_other(categories, threshold = 0.005) %>% 
+  #step_other(postal_code, threshold = 0.01) %>% 
+  #step_dummy(all_nominal(), -'business_id',-'user_id',-'name_bz') %>%
+  step_normalize(all_numeric()) %>% 
+  step_pca(all_numeric()) %>% 
+  step_naomit(all_predictors()) %>% 
+  prep()
+
+
+yelp_pca <- juice(rec_pca)
+
+skim(yelp_pca)
+
+#pca_train  <- juice(rec_pca) 
+
+rec_pca$steps[[3]]$res
+
+  
+```
+
+
+
+
+### Scree Plot
+```{r}
+
+variance_pct <- rec_pca$steps[[3]]$res
+
+(cumsum(variance_pct$sdev^2) / sum(variance_pct$sdev^2))
+
+fviz_eig(variance_pct, addlabels = TRUE) + 
+  labs(x = "Componente Principal",
+       y = "Percentual explicado da variância")
+
+```
+
+### Componentes Principais
+
+```{r}
+
+tidy_pca <- tidy(rec_pca, 3)
+
+tidy_pca %>% 
+  filter(component %in% paste0("PC", 1:5)) %>%
+  mutate(component = fct_inorder(component)) %>%
+  ggplot(aes(value, terms, fill = terms)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~component) +
+  labs(y = NULL)
+
+```
+
+
+### Principais contribuições
+
+```{r}
+
+tidy_pca %>%
+  filter(component %in% paste0("PC", 1:5)) %>%
+  group_by(component) %>%
+  top_n(8, abs(value)) %>%
+  ungroup() %>%
+  mutate(terms = reorder_within(terms, abs(value), component)) %>%
+  ggplot(aes(abs(value), terms, fill = value > 0)) +
+  geom_col() +
+  facet_wrap(~component, scales = "free_y") +
+  scale_y_reordered() +
+  labs(
+    x = "Valor absoluto da contribuição",
+    y = NULL, fill = "Positiva?")
+
+```
+
+
+## Contrastes
+```{r}
+
+variance_pct %>% 
+  fviz_pca_var(axes = c(1,2), col.var="contrib", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"))
 
 
 ```
