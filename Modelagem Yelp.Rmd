@@ -1,6 +1,6 @@
 ---
 title: "Integradora Yelp"
-author: "Viviane Sanchez"
+author: "Marcelo Francheschini, Rafael Costa, Viviane Sanchez"
 date: "6/27/2020"
 output: html_document
 ---
