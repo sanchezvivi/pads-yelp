@@ -1,0 +1,196 @@
+---
+title: "Integradora Yelp"
+author: "Viviane Sanchez"
+date: "6/27/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+library(tidymodels)
+library(tidytext)
+library(skimr)
+library(ggrepel)
+library(factoextra)
+library(vip)
+library(doParallel)
+library(vegan)
+
+setwd("~/Documents/Data Science/Insper/2 Atividade Integradora")
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+#ler muiltiplos csv
+
+?list.files
+temp = list.files(path = 'yelp_dist.csv', pattern="*.csv")
+myfiles = lapply('yelp_dist.csv/'+ temp, read.delim)
+
+```
+
+
+
+```{r}
+
+yelp_raw <- read_csv("yelp.csv/part-00000-bc7a26fd-1b72-4bf0-a3bf-feab5febdaae-c000.csv")
+
+yelp_dist_raw <- read_csv("yelp_dist.csv/part-00000-15e572e8-d14f-44b0-8859-5e3cfa796b43-c000.csv", 
+                          skip_empty_rows = TRUE, na = c('',0))
+
+
+?read_csv
+
+```
+
+
+## yelp - dist
+
+```{r}
+
+
+yelp_euc <- yelp_dist_raw %>%
+        select(-user_id) %>% 
+        mutate_all(~replace(., is.na(.), 0)) %>% 
+        as.matrix()
+
+euc_hclust <- (hclust(get_dist(yelp_jaccard, method = 'binary')))
+
+view(yelp_dist_raw)
+
+yelp_jaccard <- yelp_dist_raw %>%
+        select(-user_id) %>% 
+        mutate_all(~replace(., is.na(.), 0)) %>% 
+        mutate_all(., ~replace(. >= 3, 1,0)) %>% 
+        #mutate(user_id = yelp_dist_raw$user_id) %>% 
+        as.matrix()
+
+get_dist(yelp_jaccard, method = 'binary')
+
+yelp_hclust <- hclust(get_dist(yelp_jaccard, method = 'binary'))
+
+```
+
+
+
+```{r}
+
+plot(yelp_hclust, main = "Yelp",
+     xlab = "", ylab = "", sub = , cex = 1.5)
+
+yelp_hclust$order
+
+# install.packages("ggdendro")
+
+library(ggdendro)
+
+ggdendrogram(hc, rotate = TRUE, labels = TRUE) +
+    labs(title = "Mercado de Scotch Whisky")
+
+
+```
+
+
+## Yelp - base completa
+
+```{r}
+
+skim(yelp_raw)
+
+yelp <- yelp_raw %>% 
+  #select(-name_bz,-name_usr, -city, -address, -review_id) %>% 
+  #filter(state == 'ON', .preserve = FALSE ) %>% 
+  select(-elite_usr) %>% 
+  mutate(yelping_since = as.Date(yelping_since),
+         date = as.Date(date))
+  
+
+skim(yelp)
+
+```
+
+
+## Split
+
+```{r}
+
+split <- initial_split(yelp, prop = 0.8)
+
+train <- training(split)
+test <- testing(split)
+
+```
+
+
+## PCA
+
+```{r}
+
+rec_pca <- recipe( ~ ., train) %>% 
+  update_role(business_id, user_id, name_bz, new_role = 'id') %>% 
+  step_date(date, yelping_since, features = c("dow", "month","year")) %>% 
+  step_other(categories, threshold = 0.005) %>% 
+  step_other(postal_code, threshold = 0.01) %>% 
+  step_dummy(all_nominal(), -'business_id',-'user_id',-'name_bz') %>%
+  step_normalize(all_numeric()) %>% 
+  prep()
+
+yelp_juice <- juice(rec_pca)
+
+skim(yelp_juice)
+
+#pca_train  <- juice(rec_pca) 
+
+```
+
+
+## hclust
+
+
+```{r}
+
+yelp_matrix <- yelp_juice %>% 
+  drop_na() %>% 
+  select(-user_id, -business_id, -name_bz, -date, -yelping_since) %>% 
+  as.matrix()
+
+kclust <- kmeans(yelp_matrix, 5)
+
+summary(kclust)
+
+kclusts <- 
+  tibble(k = 1:9) %>%
+  mutate(
+    kclust = map(k, ~kmeans(yelp_matrix, .x)),
+    tidied = map(kclust, tidy),
+    glanced = map(kclust, glance),
+    augmented = map(kclust, augment, points)
+  )
+
+```
+
+
+```{r}
+
+    yelp_hclust <- yelp_matrix %>%
+        get_dist(method = "euclidean")
+    
+        #hclust(method = "complete")
+
+    
+       yelp_hclust <- yelp_juice %>%
+        select(-user_id, -business_id, -date, -yelping_since) %>% 
+        get_dist(method = "manhattan") %>%  
+        hclust(method = "complete")
+
+
+```
+
+
+
