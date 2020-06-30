@@ -20,9 +20,8 @@ library(ggdendro)
 library(factoextra)
 library(vip)
 library(doParallel)
-if(!require(vegan)){install.packages("vegan")}
-library(vegan)
 library(leaps)
+library(tidytext)
 
 ```
 
@@ -41,6 +40,8 @@ yelp_dist_raw <- list.files(path = 'output/yelp_dist.csv/',
                        pattern = "*.csv",
                        full.names = TRUE) %>% 
             map_df(~read_csv(.))
+
+skim(yelp_dist_raw)
 ```
 
 ## yelp - dist
@@ -49,23 +50,31 @@ yelp_dist_raw <- list.files(path = 'output/yelp_dist.csv/',
 
 yelp_euc <- yelp_dist_raw %>%
         select(-user_id) %>% 
+        select_if(colSums(.) != 0) %>% 
         mutate_all(~replace(., is.na(.), 0)) %>% 
         as.matrix()
 
-euc_hclust <- (hclust(get_dist(t(yelp_euc), method = 'binary')))
+euc_hclust <- (hclust(get_dist(t(yelp_euc), method = 'euclidean')))
+
+fviz_dend(euc_hclust, cex = 0.5, k = 10,
+          main = "Categorias em Toronto - Euclidiana",
+          color_labels_by_k = TRUE, horiz = TRUE)
 
 view(yelp_dist_raw)
 
 yelp_jaccard <- yelp_dist_raw %>%
         select(-user_id) %>% 
+        select_if(colSums(.) != 0) %>%
         mutate_all(~replace(., is.na(.), 0)) %>% 
         mutate_all(., ~replace(. >= 3, 1,0)) %>% 
         #mutate(user_id = yelp_dist_raw$user_id) %>% 
         as.matrix()
 
-get_dist(yelp_jaccard, method = 'binary')
-
 jac_hclust <- hclust(get_dist(t(yelp_jaccard), method = 'binary'))
+
+fviz_dend(jac_hclust, cex = 0.5, k = 10,
+          main = "Categorias em Toronto - Jaccard",
+          color_labels_by_k = TRUE, horiz = TRUE)
 
 ```
 
@@ -79,21 +88,31 @@ ggdendrogram(euc_hclust, rotate = TRUE, labels = TRUE) +
     labs(title = "Categorias em Toronto - Euclidiana")
 
 # Cortar A clusterização com base no número de clusters
-cutree(euc_hclust, k = 20) 
+euc_clust <- cutree(euc_hclust, k = 20)
+
 
 
 ##########  Hierarchical Clustering - Dist Jaccard  ##########
 
-ggdendrogram(jac_hclust, rotate = TRUE, labels = TRUE) +
+ggdendrogram(jac_hclust, rotate = TRUE, labels = TRUE, color = order) +
     labs(title = "Categorias em Toronto - Jaccard")
 
+
+fviz_dend(jac_hclust, cex = 0.5, k = 20,
+          main = "Categorias em Toronto",
+          color_labels_by_k = TRUE, horiz = TRUE) + 
+          theme_void()
+
+
+
 # Cortar A clusterização com base no número de clusters
-cutree(jac_hclust, k = 20) 
+jc_clust <- cutree(jac_hclust, k = 20)
+
+
 
 ```
 
 ## hclust
-
 
 ```{r}
 
