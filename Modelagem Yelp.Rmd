@@ -20,6 +20,7 @@ library(ggdendro)
 library(factoextra)
 library(vip)
 library(doParallel)
+if(!require(vegan)){install.packages("vegan")}
 library(vegan)
 library(leaps)
 
@@ -46,13 +47,12 @@ yelp_dist_raw <- list.files(path = 'output/yelp_dist.csv/',
 
 ```{r}
 
-
 yelp_euc <- yelp_dist_raw %>%
         select(-user_id) %>% 
         mutate_all(~replace(., is.na(.), 0)) %>% 
         as.matrix()
 
-euc_hclust <- (hclust(get_dist(yelp_jaccard, method = 'binary')))
+euc_hclust <- (hclust(get_dist(t(yelp_euc), method = 'binary')))
 
 view(yelp_dist_raw)
 
@@ -65,7 +65,7 @@ yelp_jaccard <- yelp_dist_raw %>%
 
 get_dist(yelp_jaccard, method = 'binary')
 
-yelp_hclust <- hclust(get_dist(yelp_jaccard, method = 'binary'))
+jac_hclust <- hclust(get_dist(t(yelp_jaccard), method = 'binary'))
 
 ```
 
@@ -73,18 +73,22 @@ yelp_hclust <- hclust(get_dist(yelp_jaccard, method = 'binary'))
 
 ```{r}
 
-plot(yelp_hclust, main = "Yelp",
-     xlab = "", ylab = "", sub = , cex = 1.5)
+##########   Hierarchical Clustering - Dist Euclidiana    ##########
 
-yelp_hclust$order
+ggdendrogram(euc_hclust, rotate = TRUE, labels = TRUE) +
+    labs(title = "Categorias em Toronto - Euclidiana")
 
-# install.packages("ggdendro")
+# Cortar A clusterização com base no número de clusters
+cutree(euc_hclust, k = 20) 
 
-library(ggdendro)
 
-ggdendrogram(hc, rotate = TRUE, labels = TRUE) +
-    labs(title = "Mercado de Scotch Whisky")
+##########  Hierarchical Clustering - Dist Jaccard  ##########
 
+ggdendrogram(jac_hclust, rotate = TRUE, labels = TRUE) +
+    labs(title = "Categorias em Toronto - Jaccard")
+
+# Cortar A clusterização com base no número de clusters
+cutree(jac_hclust, k = 20) 
 
 ```
 
