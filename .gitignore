@@ -8,3 +8,6 @@
 .output
 derby.log
 metastore_db
+*.json
+*.csv
+output/yelp.csv/_SUCCESS
