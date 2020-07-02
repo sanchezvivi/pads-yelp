@@ -21,7 +21,15 @@ library(factoextra)
 library(vip)
 library(doParallel)
 library(leaps)
+
 library(tidytext)
+library(tm)
+library(wordcloud)
+library(topicmodels)
+library(drlib)
+library(quanteda)
+library(stm)
+
 
 ```
 
@@ -52,7 +60,141 @@ skim(yelp_dist_raw)
 ```
 
 
-## Topic Modelling
+## Análise de reviews e tips
+
+[FONTE](https://juliasilge.com/blog/sherlock-holmes-stm/)
+
+```{r}
+
+yelp_corpus <- yelp_words %>% 
+  #select(review_tip) %>% 
+  mutate(line = row_number()) %>% 
+  unnest_tokens(word, review_tip) %>% 
+  anti_join(stop_words) %>% 
+  filter(!word %in% c(0,1,2,3,4,5,6,7,8,9)) %>% 
+  filter(!word %in% c('food','service','time','restaurant'))
+  
+  
+glimpse(stop_words)
+
+yelp_corpus %>%
+    count(word, sort = TRUE)
+
+```
+
+
+### Wordcloud
+Palavras mais utilizadas nas reviews boas:
+```{r}
+
+corpus %>% 
+  filter(stars >= 4 ) %>% 
+  filter(!word %in%  c('food','service')) %>% 
+  count(word, sort = TRUE) %>% 
+  top_n(100, n) %>% 
+  with(wordcloud(word, n, random.order = FALSE, 
+       colors = brewer.pal(8, "Dark2")))
+```
+
+
+Palavras mais utilizadas nas reviews não boas:
+```{r}
+
+corpus %>% 
+  filter(stars < 4 ) %>% 
+  filter(!word %in%  c('food','service')) %>% 
+  count(word, sort = TRUE) %>% 
+  top_n(100, n) %>% 
+  with(wordcloud(word, n, random.order = FALSE, 
+       colors = brewer.pal(8, "Dark2")))
+
+```
+
+
+## Modelo de tópicos
+
+### Frequência
+```{r}
+
+yelp_tf_idf <- yelp_corpus %>%
+    count(stars, word, sort = TRUE) %>%
+    bind_tf_idf(word, stars, n) %>%
+    arrange(-tf_idf) %>%
+    group_by(stars) %>%
+    top_n(10) %>%
+    ungroup
+
+yelp_tf_idf %>%
+    mutate(word = reorder_within(word, tf_idf, stars)) %>%
+    ggplot(aes(word, tf_idf, fill = stars)) +
+    geom_col(alpha = 0.8, show.legend = FALSE) +
+    facet_wrap(~stars, scales = "free") +
+    scale_x_reordered() +
+    coord_flip() +
+    #theme(strip.text=element_text(size=11)) +
+    labs(x = NULL, y = "tf-idf",
+         title = "Highest tf-idf words by review stars"
+         #subtitle = "Individual stories focus on different characters and narrative elements"
+         )
+
+```
+
+### Modelo de tópicos
+```{r}
+
+yelp_dfm <- yelp_corpus %>%
+    count(stars, word, sort = TRUE) %>%
+    cast_dfm(stars, word, n)
+
+topic_model <- stm(yelp_dfm, K = 5, 
+                   verbose = FALSE, init.type = "Spectral")
+
+yelp_sparse <- yelp_corpus %>%
+    count(stars, word, sort = TRUE) %>%
+    cast_sparse(stars, word, n)
+
+topic_model_sparse <- stm(yelp_sparse, K = 5, 
+                   verbose = FALSE, init.type = "Spectral")
+
+td_beta <- tidy(topic_model)
+
+td_beta_sparse <- tidy(topic_model_sparse)
+
+td_beta_sparse %>%
+    group_by(topic) %>%
+    top_n(10, beta) %>%
+    ungroup() %>%
+    mutate(topic = paste0("Topic ", topic),
+           term = reorder_within(term, beta, topic)) %>%
+    ggplot(aes(term, beta, fill = as.factor(topic))) +
+    geom_col(alpha = 0.8, show.legend = FALSE) +
+    facet_wrap(~ topic, scales = "free_y") +
+    coord_flip() +
+    scale_x_reordered() +
+    labs(x = NULL, y = expression(beta),
+         title = "Highest word probabilities for each topic",
+         subtitle = "Same words are associated with different topics")
+
+
+```
+
+### Probabilidades do documento para cada tópico
+
+```{r}
+
+
+td_gamma <- tidy(topic_model, matrix = "gamma",                    
+                 document_names = rownames(yelp_dfm))
+
+ggplot(td_gamma, aes(gamma, fill = as.factor(topic))) +
+  geom_histogram(alpha = 0.8, show.legend = FALSE) +
+  facet_wrap(~ topic, ncol = 3) +
+  labs(title = "Distribution of document probabilities for each topic",
+       subtitle = "Each topic is associated with 1-3 stars",
+       y = "Number of stars", x = expression(gamma))
+
+
+```
 
 
 # Clusters
@@ -351,6 +493,7 @@ variance_pct %>%
 - Mendonça, T. Material de aula do curso Modelagem Preditiva Avançada
 - [Fernandez, P. Marques. P. Data Science, Marketing and Business](https://datascience.insper.edu.br/datascience.pdf)
 - [Rahimi, S.; Mottahedi, S.; Liu, X. The Geography of Taste: Using Yelp to Study Urban Culture. ISPRS Int. J. Geo-Inf. 2018, 7, 376.](https://www.mdpi.com/2220-9964/7/9/376?type=check_update&version=1)
+- [Silge, J.](https://juliasilge.com/blog/sherlock-holmes-stm/)
 
 
 
