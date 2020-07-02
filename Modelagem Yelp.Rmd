@@ -41,9 +41,21 @@ yelp_dist_raw <- list.files(path = 'output/yelp_dist.csv/',
                        full.names = TRUE) %>% 
             map_df(~read_csv(.))
 
+yelp_words <- list.files(path = 'output/yelp_words.csv/', 
+                       pattern = "*.csv",
+                       full.names = TRUE) %>% 
+            map_df(~read_csv(.))
+
+
+
 skim(yelp_dist_raw)
 ```
 
+
+## Topic Modelling
+
+
+# Clusters
 ## yelp - dist
 
 ```{r}
@@ -56,7 +68,7 @@ yelp_euc <- yelp_dist_raw %>%
 
 euc_hclust <- (hclust(get_dist(t(yelp_euc), method = 'euclidean')))
 
-fviz_dend(euc_hclust, cex = 0.5, k = 10,
+fviz_dend(euc_hclust, cex = 0.5, k = 50,
           main = "Categorias em Toronto - Euclidiana",
           color_labels_by_k = TRUE, horiz = TRUE)
 
@@ -155,9 +167,7 @@ kclusts <-
 
 
 
-
-
-## Yelp - base completa 
+## Yelp -  base completa 
 
 ```{r}
 
@@ -173,7 +183,7 @@ skim(yelp)
 ```
 
 
-## Latitude vs Longitude
+### Latitude vs Longitude
 
 ```{r}
 
@@ -212,7 +222,7 @@ gg_lat_lon(yelp$review_count, 'Review count by Business')
 ```
 
 
-## Split
+### Split
 
 ```{r}
 
@@ -224,7 +234,7 @@ test <- testing(split)
 ```
 
 
-## Recipe
+### Recipe
 
 ```{r}
 
@@ -245,7 +255,7 @@ skim(yelp_juice)
 
 
 
-## PCA
+### PCA
 
 ```{r}
 
@@ -335,7 +345,7 @@ variance_pct %>%
 ```
 
 
-## Referências
+# Referências
 
 - Neumann, D. Material de aula do cursos Big Data e Computação em Nuvem
 - Mendonça, T. Material de aula do curso Modelagem Preditiva Avançada
