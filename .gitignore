@@ -6,5 +6,5 @@
 .DS_Store
 .data
 .output
-.derby.log
-.metastore_db
+derby.log
+metastore_db
