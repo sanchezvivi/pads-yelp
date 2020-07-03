@@ -54,9 +54,9 @@ yelp_words <- list.files(path = 'output/yelp_words.csv/',
                        full.names = TRUE) %>% 
             map_df(~read_csv(.))
 
-
-
 skim(yelp_dist_raw)
+
+
 ```
 
 
@@ -160,7 +160,7 @@ td_beta <- tidy(topic_model)
 
 td_beta_sparse <- tidy(topic_model_sparse)
 
-td_beta_sparse %>%
+td_beta %>%
     group_by(topic) %>%
     top_n(10, beta) %>%
     ungroup() %>%
@@ -175,8 +175,6 @@ td_beta_sparse %>%
          title = "Highest word probabilities for each topic",
          subtitle = "Same words are associated with different topics")
 
-
-```
 
 ### Probabilidades do documento para cada tópico
 
@@ -263,7 +261,6 @@ fviz_dend(jac_hclust, cex = 0.5, k = 20,
 jc_clust <- cutree(jac_hclust, k = 20)
 
 
-
 ```
 
 ## hclust
@@ -316,6 +313,7 @@ kclusts <-
 skim(yelp_raw)
 
 yelp <- yelp_raw %>% 
+        select(-review_tip,-review_id) %>% 
         mutate(yelping_since = as.Date(yelping_since),
          date = as.Date(date))
   
@@ -323,7 +321,6 @@ yelp <- yelp_raw %>%
 skim(yelp)
 
 ```
-
 
 ### Latitude vs Longitude
 
@@ -380,18 +377,93 @@ test <- testing(split)
 
 ```{r}
 
-rec <- recipe( ~ ., train) %>% 
+rec <- recipe(~ ., train) %>% 
   update_role(business_id, user_id, name_bz, new_role = 'id') %>% 
   step_date(date, yelping_since, features = c("dow", "month","year")) %>% 
-  step_other(categories, threshold = 0.005) %>% 
-  step_other(postal_code, threshold = 0.01) %>% 
-  step_dummy(all_nominal(), -'business_id',-'user_id',-'name_bz') %>%
+  step_other(categories, postal_code, threshold = 0.05) %>% 
+  #step_other(postal_code, threshold = 0.01) %>% 
+  step_dummy(all_nominal(), - 'business_id',-'user_id',-'name_bz') %>%
   step_normalize(all_numeric()) %>% 
   step_naomit(all_predictors())
 
 yelp_juice <- juice(prep(rec))
 
 skim(yelp_juice)
+
+
+```
+
+
+```{r}
+
+yelp_km <- yelp_juice %>% 
+  select(-business_id,-user_id, -name_bz,-date,-yelping_since)
+
+
+auxiliar <- tibble(cluster = yelp_km$cluster) %>% 
+              bind_cols(as_tibble(yelp_juice))
+
+yelp_km$cluster
+
+
+```
+
+
+```{r}
+
+criterio <- function(k) kmeans(yelp_km, k)$tot.withinss
+
+
+estudo <- tibble(k = 1:50) %>% #estudo até 15 clusters
+            mutate(w = map_dbl(k, criterio)) 
+
+estudo %>% 
+  ggplot(aes(k, w)) + 
+    geom_point(size = 3) + 
+    geom_line() + 
+    labs(y = "total within sum of squares", x = "k") +
+    scale_x_continuous(breaks = 1:50)
+
+```
+
+
+```{r}
+
+kmedias <- kmeans(yelp_km, 33)
+
+yelp<- yelp %>% 
+          mutate(cluster = kmedias$cluster)
+
+
+yelp_juice %>% 
+  mutate(cluster = as.factor(cluster)) %>% 
+  ggplot(aes(longitude, latitude, color = cluster)) + 
+    geom_point(size = 3, alpha = .5) + 
+    theme(legend.position = "top")
+
+
+```
+
+
+
+```{r}
+
+res_silhouette <- silhouette(kmedias$cluster, dist(yelp_juice))
+
+fviz_silhouette(res_silhouette) 
+
+
+```
+
+
+```{r}
+
+skim(yelp_juice)
+dados %>% 
+  mutate(cluster = as.factor(cluster)) %>% 
+  ggplot(aes(cluster, total_litres_alcohol)) + 
+    geom_boxplot(aes(fill = cluster), show.legend = FALSE)
+
 
 ```
 
