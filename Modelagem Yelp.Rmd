@@ -580,26 +580,29 @@ variance_pct %>%
 
 ```{r}
 
+yelp_nn <- yelp_pca %>% 
+  select_if(is.numeric)
+
 set.seed(123)
 
-idx <- sample(c(1, 2, 3), size = nrow(yelp_pca), replace = TRUE)
+idx <- sample(c(1, 2, 3), size = nrow(yelp_nn), replace = TRUE)
   
-x_tr <- select(yelp_pca[idx == 1, ], -stars) %>% 
+x_tr <- select(yelp_nn[idx == 1, ], -stars) %>% 
           as.matrix()
           
-y_tr <- as.numeric(yelp_pca$stars[idx == 1])
+y_tr <- as.numeric(yelp_nn$stars[idx == 1])
 
 
-x_val <- select(yelp_pca[idx == 2, ], -stars) %>% 
+x_val <- select(yelp_nn[idx == 2, ], -stars) %>% 
           as.matrix()
 
-y_val <- as.numeric(yelp_pca$stars[idx == 2])
+y_val <- as.numeric(yelp_nn$stars[idx == 2])
 
 
-x_test <- select(yelp_pca[idx == 3, ], -stars) %>% 
+x_test <- select(yelp_nn[idx == 3, ], -stars) %>% 
           as.matrix()
 
-y_test <- as.numeric(yelp_pca$stars[idx == 3])
+y_test <- as.numeric(yelp_nn$stars[idx == 3])
 
 
 ```
@@ -612,7 +615,7 @@ y_test <- as.numeric(yelp_pca$stars[idx == 3])
 rm(network)
 
 network <- keras_model_sequential() %>% 
-  layer_dense(units = 2, activation = "tanh", input_shape = ncol(yelp_pca)) %>%
+  layer_dense(units = 2, activation = "tanh", input_shape = ncol(x_tr)) %>%
   layer_dense(units = 4, activation = "relu") %>%
   layer_dense(units = 1, activation = "sigmoid")
 
@@ -632,17 +635,6 @@ network %>%
 
 
 keras::get_weights(network)
-
-
-
-```
-
-
-```{r}
-
-
-
-
 
 ```
 
