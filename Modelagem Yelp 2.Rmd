@@ -70,7 +70,7 @@ yelp_words <- yelp_words %>%
 skim(yelp_raw)
 
 yelp_usr_raw <- yelp_raw %>% 
-        select(user_id, contains('usr'), contains('rv'),-rv_tip) %>%
+        select(contains('id'), contains('usr'), contains('rv'),-rv_tip) %>%
         #distinct() %>% 
         mutate(yelping_since_usr = as.Date(yelping_since_usr),
                date_rv = as.Date(date_rv))
@@ -252,8 +252,6 @@ assignments %>%
   geom_point(aes(color = .cluster), alpha = 0.5) + 
   facet_wrap(~ k)
 
-
-
 ```
 
 ```{r}
@@ -271,7 +269,6 @@ glimpse(yelp_usr)
 
 
 ```
-
 
 
 ```{r}
@@ -305,7 +302,17 @@ fig
 glimpse(yelp_words)
 
 yelp_usr %>% 
-  count(cluster_usr, group_by = user_id)
+  count(cluster_usr, group_by = user_id, sort = TRUE)
+
+yelp_usr %>% 
+  count(cluster_usr, group_by = business_id, sort = TRUE)
+
+yelp_usr %>% 
+  count(cluster_usr, group_by = review_id,sort = TRUE)
+```
+
+```{r}
+
 
 yelp_join <- yelp_usr %>% 
   select(user_id, cluster_usr) %>% 
