@@ -416,6 +416,7 @@ estudo %>%
     labs(y = "total within sum of squares", x = "k") +
     scale_x_continuous(breaks = 1:30)
 
+
 ```
 
 
@@ -434,6 +435,8 @@ yelp_juice %>%
     geom_point(size = 3, alpha = .5) + 
     theme(legend.position = "top")
 
+
+#predict(kmedias, new_data = user)
 
 ```
 
@@ -460,12 +463,39 @@ clusterings <- kclusts %>%
 
 assignments %>% 
   ggplot(aes(x = longitude, y = latitude)) +
-  geom_point(aes(color = .cluster), alpha = 0.8) + 
+  geom_point(aes(color = .cluster), alpha = 0.5) + 
   facet_wrap(~ k)
 
 
 
 ```
+
+
+```{r}
+
+library(plotly)
+
+
+mtcars$am[which(mtcars$am == 0)] <- 'Automatic'
+mtcars$am[which(mtcars$am == 1)] <- 'Manual'
+mtcars$am <- as.factor(mtcars$am)
+
+kmedias$cluster
+
+fig <- plot_ly(yelp_juice, x = ~longitude, 
+               y = ~latitude,
+               z = ~date_year, color = ~cluster)
+
+fig <- fig %>% add_markers()
+fig <- fig %>% layout(scene = list(xaxis = list(title = 'Weight'),
+                     yaxis = list(title = 'Gross horsepower'),
+                     zaxis = list(title = '1/4 mile time')))
+
+fig
+
+
+```
+
 
 
 
@@ -505,6 +535,8 @@ rec_pca <- recipe(stars ~ ., train) %>%
 yelp_pca <- juice(rec_pca)
 
 skim(yelp_pca)
+
+glimpse(yelp_pca)
 
 skim(yelp)
 
@@ -569,6 +601,8 @@ tidy_pca %>%
 ## Contrastes
 
 ```{r}
+
+glimpse(train)
 
 variance_pct %>% 
   fviz_pca_var(axes = c(1,2), col.var="contrib", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"))
