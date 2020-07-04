@@ -30,6 +30,8 @@ library(drlib)
 library(quanteda)
 library(stm)
 
+library(keras)
+library(reticulate)
 
 ```
 
@@ -54,7 +56,7 @@ yelp_words <- list.files(path = 'output/yelp_words.csv/',
                        full.names = TRUE) %>% 
             map_df(~read_csv(.))
 
-skim(yelp_dist_raw)
+skim(yelp_raw)
 
 
 ```
@@ -174,6 +176,8 @@ td_beta %>%
     labs(x = NULL, y = expression(beta),
          title = "Highest word probabilities for each topic",
          subtitle = "Same words are associated with different topics")
+
+```
 
 
 ### Probabilidades do documento para cada tópico
@@ -393,45 +397,34 @@ skim(yelp_juice)
 
 ```
 
-
+### K-means
 ```{r}
 
 yelp_km <- yelp_juice %>% 
   select(-business_id,-user_id, -name_bz,-date,-yelping_since)
 
-
-auxiliar <- tibble(cluster = yelp_km$cluster) %>% 
-              bind_cols(as_tibble(yelp_juice))
-
-yelp_km$cluster
+cotovelo <- function(k) kmeans(yelp_km, k)$tot.withinss
 
 
-```
-
-
-```{r}
-
-criterio <- function(k) kmeans(yelp_km, k)$tot.withinss
-
-
-estudo <- tibble(k = 1:50) %>% #estudo até 15 clusters
-            mutate(w = map_dbl(k, criterio)) 
+estudo <- tibble(k = 1:30) %>% #estudo até 15 clusters
+            mutate(w = map_dbl(k, cotovelo))
 
 estudo %>% 
   ggplot(aes(k, w)) + 
     geom_point(size = 3) + 
     geom_line() + 
     labs(y = "total within sum of squares", x = "k") +
-    scale_x_continuous(breaks = 1:50)
+    scale_x_continuous(breaks = 1:30)
 
 ```
 
 
 ```{r}
+set.seed(123)
 
-kmedias <- kmeans(yelp_km, 33)
+kmedias <- kmeans(yelp_km, 7)
 
-yelp<- yelp %>% 
+yelp_juice <- yelp_juice %>% 
           mutate(cluster = kmedias$cluster)
 
 
@@ -445,49 +438,75 @@ yelp_juice %>%
 ```
 
 
-
 ```{r}
 
-res_silhouette <- silhouette(kmedias$cluster, dist(yelp_juice))
+set.seed(123)
 
-fviz_silhouette(res_silhouette) 
+kclusts <- tibble(k = 1:20) %>%
+  mutate(kclust = map(k, ~kmeans(yelp_km, .x)),
+        tidied = map(kclust, tidy),
+        glanced = map(kclust, glance),
+        augmented = map(kclust, augment, yelp_km)
+        )
+
+clusters <- kclusts %>%
+  unnest(cols = c(tidied))
+
+assignments <- kclusts %>% 
+  unnest(cols = c(augmented))
+
+clusterings <- kclusts %>%
+  unnest(cols = c(glanced))
+
+assignments %>% 
+  ggplot(aes(x = longitude, y = latitude)) +
+  geom_point(aes(color = .cluster), alpha = 0.8) + 
+  facet_wrap(~ k)
+
 
 
 ```
 
 
+
 ```{r}
 
-skim(yelp_juice)
-dados %>% 
-  mutate(cluster = as.factor(cluster)) %>% 
-  ggplot(aes(cluster, total_litres_alcohol)) + 
-    geom_boxplot(aes(fill = cluster), show.legend = FALSE)
+res_gap <- clusGap(yelp_km, 
+                   FUN = kmeans, 
+                   d.power = 2,
+                   nstart = 30, 
+                   iter.max = 30,
+                   K.max = 20, 
+                   B = 50)
 
+fviz_gap_stat(res_gap)
 
 ```
-
 
 
 ### PCA
 
 ```{r}
 
-rec_pca <- recipe( ~ ., train) %>% 
+skim(train)
+
+rec_pca <- recipe(stars ~ ., train) %>% 
   update_role(business_id, user_id, name_bz, new_role = 'id') %>% 
   step_date(date, yelping_since, features = c("dow", "month","year")) %>% 
   #step_other(categories, threshold = 0.005) %>% 
   #step_other(postal_code, threshold = 0.01) %>% 
   #step_dummy(all_nominal(), -'business_id',-'user_id',-'name_bz') %>%
-  step_normalize(all_numeric()) %>% 
-  step_pca(all_numeric()) %>% 
-  step_naomit(all_predictors()) %>% 
+  step_normalize(all_numeric(), -all_outcomes()) %>% 
+  step_pca(all_numeric(), -all_outcomes()) %>% 
+  step_naomit(all_numeric()) %>% 
   prep()
 
 
 yelp_pca <- juice(rec_pca)
 
 skim(yelp_pca)
+
+skim(yelp)
 
 #pca_train  <- juice(rec_pca) 
 
@@ -531,7 +550,6 @@ tidy_pca %>%
 ### Principais contribuições
 
 ```{r}
-
 tidy_pca %>%
   filter(component %in% paste0("PC", 1:5)) %>%
   group_by(component) %>%
@@ -545,7 +563,6 @@ tidy_pca %>%
   labs(
     x = "Valor absoluto da contribuição",
     y = NULL, fill = "Positiva?")
-
 ```
 
 
@@ -557,6 +574,78 @@ variance_pct %>%
   fviz_pca_var(axes = c(1,2), col.var="contrib", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"))
 
 ```
+
+
+### Rede Neural
+
+```{r}
+
+set.seed(123)
+
+idx <- sample(c(1, 2, 3), size = nrow(yelp_pca), replace = TRUE)
+  
+x_tr <- select(yelp_pca[idx == 1, ], -stars) %>% 
+          as.matrix()
+          
+y_tr <- as.numeric(yelp_pca$stars[idx == 1])
+
+
+x_val <- select(yelp_pca[idx == 2, ], -stars) %>% 
+          as.matrix()
+
+y_val <- as.numeric(yelp_pca$stars[idx == 2])
+
+
+x_test <- select(yelp_pca[idx == 3, ], -stars) %>% 
+          as.matrix()
+
+y_test <- as.numeric(yelp_pca$stars[idx == 3])
+
+
+```
+
+
+```{r}
+
+## Define
+
+rm(network)
+
+network <- keras_model_sequential() %>% 
+  layer_dense(units = 2, activation = "tanh", input_shape = ncol(yelp_pca)) %>%
+  layer_dense(units = 4, activation = "relu") %>%
+  layer_dense(units = 1, activation = "sigmoid")
+
+network %>% 
+  compile(optimizer = "rmsprop", 
+          loss = "binary_crossentropy", 
+          metrics = c("accuracy"))
+
+
+```
+
+```{r}
+
+network %>% 
+  fit(x_tr, y_tr, epochs = 80, batch_size = 16, 
+      validation_data = list(x_val, y_val))
+
+
+keras::get_weights(network)
+
+
+
+```
+
+
+```{r}
+
+
+
+
+
+```
+
 
 
 # Referências
