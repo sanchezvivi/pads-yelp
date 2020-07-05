@@ -1,0 +1,171 @@
+---
+title: "Integradora Yelp"
+author: "Marcelo Francheschini, Rafael Costa, Viviane Sanchez"
+date: "6/27/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+library(tidymodels)
+library(tidytext)
+library(skimr)
+library(ggrepel)
+library(ggdendro)
+library(factoextra)
+library(vip)
+library(doParallel)
+library(cluster)
+
+```
+
+
+```{r}
+
+library(tidytext)
+library(tm)
+library(wordcloud)
+library(topicmodels)
+library(drlib)
+library(quanteda)
+library(stm)
+
+library(keras)
+library(reticulate)
+
+```
+
+# Leitura de arquivos
+
+```{r eval=FALSE, include=FALSE}
+
+yelp_bz_raw <- list.files(path = 'output/yelp_bz.csv/', 
+                       pattern = "*.csv",
+                       full.names = TRUE) %>% 
+            map_df(~read_csv(.))
+
+yelp_usr_raw <- list.files(path = 'output/yelp_usr.csv/', 
+                       pattern = "*.csv",
+                       full.names = TRUE) %>% 
+            map_df(~read_csv(.))
+
+```
+
+# Business
+
+Clusterização dos estabelecimentos por semelhança de atributos
+
+## K-means
+
+```{r}
+
+glimpse(yelp_bz_raw)
+
+?kmeans
+
+yelp_bz <- yelp_bz_raw %>% 
+          select(-business_id,-is_open) %>% 
+          scale()
+
+skim(yelp_bz)
+
+set.seed(123)
+
+kclusts <- tibble(k = 1:30) %>%
+  mutate(kclust = map(k, ~kmeans(yelp_bz, .x)),
+        tidied = map(kclust, tidy),
+        glanced = map(kclust, glance),
+        augmented = map(kclust, augment, yelp_bz)
+        )
+
+clusters <- kclusts %>%
+  unnest(cols = c(tidied))
+
+assignments <- kclusts %>% 
+  unnest(cols = c(augmented))
+
+clusterings <- kclusts %>%
+  unnest(cols = c(glanced))
+
+
+#cotovelo
+clusterings %>% 
+  ggplot(aes(k, tot.withinss)) + 
+    geom_point(size = 3) + 
+    geom_line() + 
+    labs(y = "total within sum of squares", x = "k") +
+    scale_x_continuous(breaks = 1:30)
+
+
+#k-means
+assignments %>% 
+  ggplot(aes(x = longitude, y = latitude)) +
+  geom_point(aes(color = .cluster), alpha = 0.5) + 
+  facet_wrap(~ k)
+
+```
+
+
+```{r}
+
+set.seed(123)
+kmeans_bz <-  kmeans(yelp_bz, 15)
+
+yelp_bz_cluster <- yelp_bz_raw %>% 
+          select(business_id) %>% 
+          mutate(cluster = kmeans_bz$cluster)
+
+yelp_bz_cluster
+
+write.csv(yelp_bz_cluster, file = "output/bz_cluster.csv")
+
+```
+
+
+#MDS
+
+```{r}
+
+mds <- cmdscale(yelp_bz, k = nrow(yelp_bz) - 1, eig = TRUE)
+
+barplot(mds$eig)
+
+cumsum(mds$eig) / sum(mds$eig)
+
+```
+
+
+
+# Users
+
+```{r}
+
+
+
+```
+
+
+```{r}
+
+
+
+
+```
+
+
+# Referências
+
+- Neumann, D. Material de aula do cursos Big Data e Computação em Nuvem
+- Mendonça, T. Material de aula do curso Modelagem Preditiva Avançada
+- [Fernandez, P. Marques. P. Data Science, Marketing and Business](https://datascience.insper.edu.br/datascience.pdf)
+- [Rahimi, S.; Mottahedi, S.; Liu, X. The Geography of Taste: Using Yelp to Study Urban Culture. ISPRS Int. J. Geo-Inf. 2018, 7, 376.](https://www.mdpi.com/2220-9964/7/9/376?type=check_update&version=1)
+- [Silge, J.](https://juliasilge.com/blog/sherlock-holmes-stm/)
+
+
+
+
