@@ -3,6 +3,8 @@ title: "Integradora Yelp"
 author: "Marcelo Francheschini, Rafael Costa, Viviane Sanchez"
 date: "6/27/2020"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -55,9 +57,120 @@ yelp_words <- list.files(path = 'output/yelp_words.csv/',
             map_df(~read_csv(.))
 
 
+yelp_users <- list.files(path = 'output/yelp_usr.csv/', 
+                       pattern = "*.csv",
+                       full.names = TRUE) %>% 
+            map_df(~read_csv(.))
 
-skim(yelp_dist_raw)
+
+#view(yelp_users)
 ```
+
+
+## Análise da Base de Usuários
+
+```{r}
+
+##########  Hierarchical Clustering - Dist Euclidiana  ##########
+# Preparando a Base
+
+yelp_usr_euc <- t(yelp_users[,-c(1)])
+
+euc_usr_hclust <- (hclust(get_dist(t(yelp_usr_euc), method = 'euclidean')))
+
+```
+
+
+
+```{r}
+##########   Hierarchical Clustering - Dist Euclidiana    ##########
+# Gráficos
+
+ggdendrogram(euc_usr_hclust, rotate = TRUE, labels = TRUE) +
+    labs(title = "Categorias em Toronto - Euclidiana")
+
+fviz_dend(euc_usr_hclust , cex = 0.5, k = 6,
+          main = "Categorias de Usuários - Euclidiana",
+          color_labels_by_k = TRUE, horiz = TRUE)
+
+
+# Cortar A clusterização com base no número de clusters
+user_euc_clust <- cutree(euc_usr_hclust , k = 6)
+
+view(user_euc_clust)
+
+```
+
+
+```{r}
+
+yelp_pad <- yelp_users %>% 
+              select(-user_id) %>% 
+              scale() 
+
+kclusts <- tibble(k = 1:20) %>%
+  mutate(kclust = map(k, ~kmeans(yelp_pad, .x)),
+        tidied = map(kclust, tidy),
+        glanced = map(kclust, glance),
+        augmented = map(kclust, augment, yelp_pad)
+        )
+
+clusters <- kclusts %>%
+  unnest(cols = c(tidied))
+
+assignments <- kclusts %>% 
+  unnest(cols = c(augmented))
+
+clusterings <- kclusts %>%
+  unnest(cols = c(glanced))
+
+clusterings %>% 
+  ggplot(aes(k, tot.withinss)) + 
+    geom_point(size = 3) + 
+    geom_line() + 
+    labs(y = "total within sum of squares", x = "k") +
+    scale_x_continuous(breaks = 1:20)
+
+```
+
+
+```{r}
+
+set.seed(123)
+
+kmeans_usr <-  kmeans(yelp_pad, 7)
+
+yelp_usr_cluster <- yelp_users %>% 
+          #select(user_id) %>% 
+          mutate(cluster = kmeans_usr$cluster)
+
+yelp_usr_cluster %>% 
+  ggplot(aes(year_since,average_stars, color=cluster))+
+  geom_point()
+
+library(plotly)
+
+fig <- plot_ly(yelp_usr_cluster, x = ~year_since, 
+               y = ~average_stars,
+               z = ~fans, color = ~cluster)
+
+fig <- fig %>% add_markers()
+
+fig <- fig %>% layout(scene = list(xaxis = list(title = 'Yelping since'),
+                                   range = c('2000-01-01','2020-01-01'),
+                     yaxis = list(title = 'User Score'),
+                     zaxis = list(title = 'Review Stars')))
+
+fig
+
+#write.csv(yelp_bz_cluster, file = "output/bz_cluster.csv")
+
+```
+
+
+
+
+
 
 
 ## Análise de reviews e tips
@@ -295,7 +408,7 @@ write.csv(distancias,"C:\\Users\\Rafael\\Documents\\GitHub\\pads-yelp\\output\\D
 ```{r}
 
 yelp_pad <- yelp_dist_raw %>% 
-              select(-user_id) %>% 
+              select(-business_id) %>% 
               scale() 
 
 kclusts <- tibble(k = 1:150) %>%
