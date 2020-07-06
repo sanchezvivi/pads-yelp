@@ -21,9 +21,9 @@ library(factoextra)
 library(vip)
 library(doParallel)
 library(cluster)
+library(plotly)
 
 ```
-
 
 ```{r}
 
@@ -49,7 +49,7 @@ yelp_bz_raw <- list.files(path = 'output/yelp_bz.csv/',
                        full.names = TRUE) %>% 
             map_df(~read_csv(.))
 
-yelp_usr_raw <- list.files(path = 'output/yelp_usr.csv/', 
+yelp_users <- list.files(path = 'output/yelp_usr.csv/', 
                        pattern = "*.csv",
                        full.names = TRUE) %>% 
             map_df(~read_csv(.))
@@ -63,10 +63,85 @@ Clusterização dos estabelecimentos por semelhança de atributos
 
 ```{r}
 
-yelp_bz <- yelp_bz_raw %>% 
-          select(-is_open)
+glimpse(yelp_bz_raw)
 
-glimpse(yelp_bz)
+yelp_bz <- yelp_bz_raw %>% 
+          select_if(~is.numeric(.))
+  
+```
+
+## Matriz de dissimilaridades
+
+Distância Euclidiana é válida para intervalos contínuos. Como a base possui diferentes atributos, será utilizada a distância de Gower, que é mais apropriada para dados misturados
+
+```{r}
+
+bz_gower <- daisy(yelp_bz, metric = 'gower')
+
+gower_mat <- as.matrix(bz_gower)
+
+dim(gower_mat)
+
+# Output most similar pair
+#yelp_bz[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]),arr.ind = TRUE)[1, ], ]
+
+# Output most dissimilar pair
+#yelp_bz[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]), arr.ind = TRUE)[1, ], ]
+
+```
+
+## MDS (lento)
+
+```{r}
+
+mds <- cmdscale(gower_mat, k = 35, eig = TRUE)
+
+?cmdscale
+
+barplot(mds$eig)
+
+cumsum(mds$eig) / sum(mds$eig)
+
+# ggplot(mapping = aes(x = factor(1:length(mds$eig)), y = mds$eig)) +
+#     geom_col() +
+#     labs(x = "", y = "")
+
+hc <- hclust(dist(mds$points[, 1:2]))
+
+ggdendrogram(hc, rotate = TRUE, size = 2, labels = TRUE) +
+    labs(title = "Concorrência no mercado automobilístico")
+
+cutree(hc, k = 3)
+
+
+
+```
+
+
+## HCLUST
+
+```{r}
+## Hclust
+
+bz_hclust <- hclust(bz_gower)
+
+clust <- cutree(hclust, k = 30)
+
+ggdendrogram(hclust, rotate = TRUE, labels = TRUE) +
+    labs(title = "Categorias em Toronto - Gower")
+
+fviz_dend(hclust, cex = 0.5, k = 5,
+          main = "Categorias em Toronto - Euclidiana",
+          color_labels_by_k = TRUE, horiz = TRUE)
+
+
+yelp_bz_clust <- yelp_bz_raw %>% 
+                mutate(cluster = clust)
+
+
+yelp_bz_clust %>% 
+  ggplot(aes(longitude,latitude, color = cluster)) +
+           geom_point()
 
 ```
 
@@ -75,7 +150,10 @@ glimpse(yelp_bz)
 
 ```{r}
 
-rec_pca <- recipe(stars ~ ., yelp_bz) %>% 
+yelp_bz_pca <-  yelp_bz_raw %>% 
+                select_if(~is_numeric(.))
+  
+rec_pca <- recipe(stars ~ ., yelp_bz_pca) %>% 
   update_role(contains('id'), new_role = 'id') %>% 
   #step_date(date_rv, yelping_since_usr, features = c("dow", "month","year")) %>% 
   #step_other(categories, threshold = 0.005) %>% 
@@ -134,7 +212,6 @@ pca_cols <- tidy_pca %>%
   as.vector()
 
 ```
-
 
 ## K-means
 
@@ -198,10 +275,53 @@ write.csv(yelp_bz_cluster, file = "output/bz_cluster.csv")
 
 ```
 
+## HCLUST
+
+```{r}
+
+
+```
+
 # Users
+## KMeans
+```{r}
+
+yelp_usr_euc <- t(yelp_usr_raw[,-c(1)])
+
+euc_usr_hclust <- (hclust(get_dist(t(yelp_usr_euc), method = 'euclidean')))
+
+```
 
 ```{r}
 
+set.seed(123)
+
+yelp_pad <- yelp_users %>% 
+              select(-user_id) %>% 
+              scale() 
+
+kclusts <- tibble(k = 1:20) %>%
+  mutate(kclust = map(k, ~kmeans(yelp_pad, .x)),
+        tidied = map(kclust, tidy),
+        glanced = map(kclust, glance),
+        augmented = map(kclust, augment, yelp_pad)
+        )
+
+clusters <- kclusts %>%
+  unnest(cols = c(tidied))
+
+assignments <- kclusts %>% 
+  unnest(cols = c(augmented))
+
+clusterings <- kclusts %>%
+  unnest(cols = c(glanced))
+
+clusterings %>% 
+  ggplot(aes(k, tot.withinss)) + 
+    geom_point(size = 3) + 
+    geom_line() + 
+    labs(y = "total within sum of squares", x = "k") +
+    scale_x_continuous(breaks = 1:20)
 
 
 ```
@@ -209,11 +329,39 @@ write.csv(yelp_bz_cluster, file = "output/bz_cluster.csv")
 
 ```{r}
 
+set.seed(123)
+kmeans_usr <-  kmeans(yelp_pad, 7)
 
+yelp_usr_cluster <- yelp_users %>% 
+          #select(user_id) %>% 
+          mutate(cluster = kmeans_usr$cluster)
 
+yelp_usr_cluster %>% 
+  ggplot(aes(year_since,average_stars, color = cluster)) +
+  geom_point()
 
 ```
 
+
+```{r}
+
+library(plotly)
+
+plot_ly(yelp_usr_cluster, x = ~year_since, 
+               y = ~average_stars,
+               z = ~fans, color = ~cluster) %>% 
+  add_markers()
+
+```
+
+
+```{r}
+
+yelp_usr_cluster <- yelp_users %>% 
+          select(user_id, cluster) %>%
+          write.csv(file = "output/bz_cluster.csv")
+
+```
 
 # Referências
 

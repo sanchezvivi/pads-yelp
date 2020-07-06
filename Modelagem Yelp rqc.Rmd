@@ -168,11 +168,6 @@ fig
 ```
 
 
-
-
-
-
-
 ## Análise de reviews e tips
 
 [FONTE](https://juliasilge.com/blog/sherlock-holmes-stm/)
