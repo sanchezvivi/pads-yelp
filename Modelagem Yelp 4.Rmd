@@ -54,6 +54,8 @@ yelp_users <- list.files(path = 'output/yelp_usr.csv/',
                        full.names = TRUE) %>% 
             map_df(~read_csv(.))
 
+?daisy
+
 ```
 
 # Business
@@ -125,7 +127,7 @@ cutree(hc, k = 3)
 
 bz_hclust <- hclust(bz_gower)
 
-clust <- cutree(hclust, k = 30)
+clust <- cutree(hclust, k = 10)
 
 ggdendrogram(hclust, rotate = TRUE, labels = TRUE) +
     labs(title = "Categorias em Toronto - Gower")
@@ -263,7 +265,7 @@ assignments %>%
 ```{r}
 
 set.seed(123)
-kmeans_bz <-  kmeans(yelp_bz, 15)
+kmeans_bz <-  kmeans(yelp_bz, 7)
 
 yelp_bz_cluster <- yelp_bz_raw %>% 
           select(business_id) %>% 
@@ -284,13 +286,6 @@ write.csv(yelp_bz_cluster, file = "output/bz_cluster.csv")
 
 # Users
 ## KMeans
-```{r}
-
-yelp_usr_euc <- t(yelp_usr_raw[,-c(1)])
-
-euc_usr_hclust <- (hclust(get_dist(t(yelp_usr_euc), method = 'euclidean')))
-
-```
 
 ```{r}
 
@@ -298,7 +293,7 @@ set.seed(123)
 
 yelp_pad <- yelp_users %>% 
               select(-user_id) %>% 
-              scale() 
+              scale()
 
 kclusts <- tibble(k = 1:20) %>%
   mutate(kclust = map(k, ~kmeans(yelp_pad, .x)),
@@ -326,7 +321,6 @@ clusterings %>%
 
 ```
 
-
 ```{r}
 
 set.seed(123)
@@ -336,32 +330,39 @@ yelp_usr_cluster <- yelp_users %>%
           #select(user_id) %>% 
           mutate(cluster = kmeans_usr$cluster)
 
-yelp_usr_cluster %>% 
-  ggplot(aes(year_since,average_stars, color = cluster)) +
-  geom_point()
+glimpse(yelp_usr_cluster)
 
 ```
 
 
 ```{r}
-
-library(plotly)
 
 plot_ly(yelp_usr_cluster, x = ~year_since, 
                y = ~average_stars,
                z = ~fans, color = ~cluster) %>% 
   add_markers()
 
+
+
 ```
 
 
 ```{r}
 
-yelp_usr_cluster <- yelp_users %>% 
+yelp_usr_cluster %>% 
           select(user_id, cluster) %>%
-          write.csv(file = "output/bz_cluster.csv")
+          write.csv(file = "output/usr_cluster.csv")
 
 ```
+
+
+## Rede Neural
+
+```{r}
+
+```
+
+
 
 # Referências
 
@@ -370,7 +371,7 @@ yelp_usr_cluster <- yelp_users %>%
 - [Fernandez, P. Marques. P. Data Science, Marketing and Business](https://datascience.insper.edu.br/datascience.pdf)
 - [Rahimi, S.; Mottahedi, S.; Liu, X. The Geography of Taste: Using Yelp to Study Urban Culture. ISPRS Int. J. Geo-Inf. 2018, 7, 376.](https://www.mdpi.com/2220-9964/7/9/376?type=check_update&version=1)
 - [Silge, J.](https://juliasilge.com/blog/sherlock-holmes-stm/)
-
+https://www.datanovia.com/en/lessons/clustering-distance-measures/
 
 
 
