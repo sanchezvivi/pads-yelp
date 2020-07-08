@@ -279,13 +279,6 @@ write.csv(yelp_bz_cluster, file = "output/bz_cluster.csv")
 
 ```
 
-## HCLUST
-
-```{r}
-
-
-```
-
 # Users
 ## KMeans
 
@@ -376,12 +369,14 @@ skim(yelp_raw)
 ```
 
 
+
 ```{r}
 
 yelp_rv <- yelp_raw %>% 
-  mutate(line = row_number()) %>% 
-  select_if(~is.numeric(.)) %>% 
-  sample_frac(0.11)
+  #mutate(line = row_number()) %>% 
+  mutate(stars = replace(stars >= 4,1,0)) %>% 
+  select_if(is.numeric) %>% 
+  sample_frac(0.50)
 
 glimpse(yelp_rv)
 
@@ -395,18 +390,21 @@ set.seed(123)
 idx <- sample(c(1, 2, 3), size = nrow(yelp_rv), replace = TRUE)
   
 x_tr <- select(yelp_rv[idx == 1, ], -stars) %>% 
+          scale() %>% 
           as.matrix()
-          
+
 y_tr <- as.numeric(yelp_rv$stars[idx == 1])
 
 
-x_val <- select(yelp_rv[idx == 2, ], -stars) %>% 
+x_val <- select(yelp_rv[idx == 2, ], -stars) %>%
+          scale() %>% 
           as.matrix()
 
 y_val <- as.numeric(yelp_rv$stars[idx == 2])
 
 
 x_test <- select(yelp_rv[idx == 3, ], -stars) %>% 
+          scale() %>% 
           as.matrix()
 
 y_test <- as.numeric(yelp_rv$stars[idx == 3])
@@ -469,28 +467,50 @@ y_test <- yelp_test %>%
 
 ```{r}
 
-rm(network)
+rm(yelp_nn)
 
-network <- keras_model_sequential() %>% 
+yelp_nn <- keras_model_sequential() %>% 
   layer_dense(units = 64, activation = "tanh", input_shape = ncol(x_tr)) %>%
-  layer_dense(units = 8, activation = "relu") %>%
-  layer_dense(units = 5, activation = "softmax")
+  layer_dense(units = 32, activation = "relu") %>%
+  #layer_dense(units = 6, activation = "softmax")
+  layer_dense(units = 1, activation = "sigmoid")
 
-network %>% 
+
+?keras_model_sequential
+
+yelp_nn %>% 
   compile(optimizer = "rmsprop", 
-          loss = "categorical_crossentropy", 
+          #loss = "sparse_categorical_crossentropy", 
+          loss = "binary_crossentropy",
           metrics = c("accuracy"))
 
 
-network %>% 
-  fit(x_tr, y_tr, epochs = 40, batch_size = 16, 
+history <- yelp_nn %>% 
+  fit(x_tr, y_tr, 
+      epochs = 80, batch_size = 512, 
       validation_data = list(x_val, y_val))
 
+keras::get_weights(yelp_nn)
 
-keras::get_weights(network)
+results <- yelp_nn %>% evaluate(x_test, y_test)
+
+
+#probabilidade de ser um bom review
+predictions <- yelp_nn %>% 
+              predict(x_test)
 
 
 ```
+
+
+```{r}
+
+
+
+
+
+```
+
 
 
 
