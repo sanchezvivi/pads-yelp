@@ -40,10 +40,13 @@ library(reticulate)
 
 ```
 
-# Leitura de arquivos
+# Leitura de arquivos individuais
 
 ```{r eval=FALSE, include=FALSE}
+```
 
+
+```{r eval=FALSE, include=FALSE}
 yelp_bz_raw <- list.files(path = 'output/yelp_bz.csv/', 
                        pattern = "*.csv",
                        full.names = TRUE) %>% 
@@ -271,7 +274,6 @@ yelp_bz_cluster <- yelp_bz_raw %>%
           select(business_id) %>% 
           mutate(cluster = kmeans_bz$cluster)
 
-yelp_bz_cluster
 
 write.csv(yelp_bz_cluster, file = "output/bz_cluster.csv")
 
@@ -356,9 +358,137 @@ yelp_usr_cluster %>%
 ```
 
 
+
+
 ## Rede Neural
 
+Leitura da base final
+
 ```{r}
+
+yelp_raw <- list.files(path = 'output/yelp.csv/', 
+                       pattern = "*.csv",
+                       full.names = TRUE) %>% 
+            map_df(~read_csv(.))
+
+skim(yelp_raw)
+
+```
+
+
+```{r}
+
+yelp_rv <- yelp_raw %>% 
+  mutate(line = row_number()) %>% 
+  select_if(~is.numeric(.)) %>% 
+  sample_frac(0.11)
+
+glimpse(yelp_rv)
+
+```
+
+
+```{r}
+
+set.seed(123)
+
+idx <- sample(c(1, 2, 3), size = nrow(yelp_rv), replace = TRUE)
+  
+x_tr <- select(yelp_rv[idx == 1, ], -stars) %>% 
+          as.matrix()
+          
+y_tr <- as.numeric(yelp_rv$stars[idx == 1])
+
+
+x_val <- select(yelp_rv[idx == 2, ], -stars) %>% 
+          as.matrix()
+
+y_val <- as.numeric(yelp_rv$stars[idx == 2])
+
+
+x_test <- select(yelp_rv[idx == 3, ], -stars) %>% 
+          as.matrix()
+
+y_test <- as.numeric(yelp_rv$stars[idx == 3])
+
+```
+
+
+```{r}
+
+split <- initial_split(yelp_rv, prop = 2/3 , strata = stars)
+
+train_val <- training(split)
+
+yelp_test <- testing(split)
+
+
+split_val <- initial_split(train_val, prop = 1/2, strata = stars)
+
+yelp_train <- training(split_val)
+yelp_val <- testing(split_val)
+
+
+x_train <- yelp_train %>% 
+            select(-stars) %>% 
+            as.matrix()
+
+dim(x_train)
+
+y_train <- yelp_train %>% 
+            select(stars) %>% 
+            as.matrix()
+
+dim(y_train)
+
+
+x_val<- yelp_val %>% 
+            select(-stars) %>% 
+            data.matrix()
+
+dim(y_val)
+
+y_val <- yelp_val %>% 
+            select(stars) %>% 
+            data.matrix()
+
+dim(x_val)
+
+x_test<- yelp_test %>% 
+            select(-stars) %>% 
+            data.matrix()
+
+dim(y_test)
+
+y_test <- yelp_test %>% 
+            select(stars) %>% 
+            data.matrix()
+
+```
+
+
+```{r}
+
+rm(network)
+
+network <- keras_model_sequential() %>% 
+  layer_dense(units = 64, activation = "tanh", input_shape = ncol(x_tr)) %>%
+  layer_dense(units = 8, activation = "relu") %>%
+  layer_dense(units = 5, activation = "softmax")
+
+network %>% 
+  compile(optimizer = "rmsprop", 
+          loss = "categorical_crossentropy", 
+          metrics = c("accuracy"))
+
+
+network %>% 
+  fit(x_tr, y_tr, epochs = 40, batch_size = 16, 
+      validation_data = list(x_val, y_val))
+
+
+keras::get_weights(network)
+
 
 ```
 
