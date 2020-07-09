@@ -391,7 +391,7 @@ y_val <- yelp_val %>%
 
 dim(x_val)
 
-x_test<- yelp_test %>% 
+x_test <- yelp_test %>% 
           select(-stars_rv) %>% 
           scale(center = mean, scale = std) %>% 
           as.matrix()
@@ -461,7 +461,7 @@ Criação de um usuário e definição de seu cluster
 
 rm(user)
 
-compliment_max <- 15
+compliment_max <- 100
 
 user <- tibble(user_id = 'random_user',
                average_stars = round(runif(1, 1.0, 5),2),
@@ -483,18 +483,19 @@ user <- tibble(user_id = 'random_user',
                funny = ceiling(runif(1,0, compliment_max)),
                review_count_usr = ceiling(runif(1,0,compliment_max)),
                useful = ceiling(runif(1,0, compliment_max)),
-               year_since = ceiling(runif(1,2009, 2019))
+               year_since = ceiling(runif(1,2004, 2019))
                 )
 
 ## criação aleatória do número de anos que o usuário foi elite
 user$elite_count <- ceiling(runif(1,0, (2020-user$year_since)))
-
 
 #encontra o número do cluster em que o usuário se encaixa
 user$cluster_usr <- user_cluster_tree %>%
       predict(user) %>% 
       ceiling()
   
+glimpse(user)
+
 # seleção aleatória de estabelecimentos e notas atribuídas a cada um baseado no número de reviews
 
 n_reviews <- user$review_count_usr
@@ -545,6 +546,8 @@ predictions <- as_tibble(predict(yelp_nn, user_x_test))
   recommendation <- to_review %>% 
     bind_cols(pred = predictions) %>% 
     anti_join(., reviewed_usr, by = 'business_id')
+  
+  glimpse(recommendation)
 
 }
 
@@ -606,8 +609,6 @@ qmplot(longitude, latitude, data = top_5,
 
 ```
 
-
-
 # Referências
 
 - Neumann, D. Material de aula do cursos Big Data e Computação em Nuvem
@@ -615,7 +616,7 @@ qmplot(longitude, latitude, data = top_5,
 - [Fernandez, P. Marques. P. Data Science, Marketing and Business](https://datascience.insper.edu.br/datascience.pdf)
 - [Rahimi, S.; Mottahedi, S.; Liu, X. The Geography of Taste: Using Yelp to Study Urban Culture. ISPRS Int. J. Geo-Inf. 2018, 7, 376.](https://www.mdpi.com/2220-9964/7/9/376?type=check_update&version=1)
 - [Silge, J.](https://juliasilge.com/blog/sherlock-holmes-stm/)
-https://www.datanovia.com/en/lessons/clustering-distance-measures/
+- https://www.datanovia.com/en/lessons/clustering-distance-measures/
 
 
 
