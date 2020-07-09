@@ -230,7 +230,7 @@ skim(yelp_bz)
 
 set.seed(123)
 
-kclusts <- tibble(k = 1:30) %>%
+kclusts <- tibble(k = 1:50) %>%
   mutate(kclust = map(k, ~kmeans(yelp_bz, .x)),
         tidied = map(kclust, tidy),
         glanced = map(kclust, glance),
@@ -253,7 +253,7 @@ clusterings %>%
     geom_point(size = 3) + 
     geom_line() + 
     labs(y = "total within sum of squares", x = "k") +
-    scale_x_continuous(breaks = 1:30)
+    scale_x_continuous(breaks = 1:50)
 
 
 #k-means
@@ -268,7 +268,7 @@ assignments %>%
 ```{r}
 
 set.seed(123)
-kmeans_bz <-  kmeans(yelp_bz, 7)
+kmeans_bz <-  kmeans(yelp_bz, 10)
 
 yelp_bz_cluster <- yelp_bz_raw %>% 
           select(business_id) %>% 
@@ -374,9 +374,9 @@ skim(yelp_raw)
 
 yelp_rv <- yelp_raw %>% 
   #mutate(line = row_number()) %>% 
+  select(-'cool',-'date',-'funny',-'useful',-'cluster_usr') %>% 
   mutate(stars = replace(stars >= 4,1,0)) %>% 
-  select_if(is.numeric) %>% 
-  sample_frac(0.50)
+  select_if(is.numeric) #%>% sample_frac(0.50)
 
 glimpse(yelp_rv)
 
@@ -414,64 +414,12 @@ y_test <- as.numeric(yelp_rv$stars[idx == 3])
 
 ```{r}
 
-split <- initial_split(yelp_rv, prop = 2/3 , strata = stars)
-
-train_val <- training(split)
-
-yelp_test <- testing(split)
-
-
-split_val <- initial_split(train_val, prop = 1/2, strata = stars)
-
-yelp_train <- training(split_val)
-yelp_val <- testing(split_val)
-
-
-x_train <- yelp_train %>% 
-            select(-stars) %>% 
-            as.matrix()
-
-dim(x_train)
-
-y_train <- yelp_train %>% 
-            select(stars) %>% 
-            as.matrix()
-
-dim(y_train)
-
-
-x_val<- yelp_val %>% 
-            select(-stars) %>% 
-            data.matrix()
-
-dim(y_val)
-
-y_val <- yelp_val %>% 
-            select(stars) %>% 
-            data.matrix()
-
-dim(x_val)
-
-x_test<- yelp_test %>% 
-            select(-stars) %>% 
-            data.matrix()
-
-dim(y_test)
-
-y_test <- yelp_test %>% 
-            select(stars) %>% 
-            data.matrix()
-
-```
-
-
-```{r}
-
 rm(yelp_nn)
 
 yelp_nn <- keras_model_sequential() %>% 
-  layer_dense(units = 64, activation = "tanh", input_shape = ncol(x_tr)) %>%
-  layer_dense(units = 32, activation = "relu") %>%
+  layer_dense(units = 30, activation = "tanh", input_shape = ncol(x_tr)) %>%
+  layer_dense(units = 15, activation = "relu") %>%
+  layer_dense(units = 5, activation = "relu") %>%
   #layer_dense(units = 6, activation = "softmax")
   layer_dense(units = 1, activation = "sigmoid")
 
@@ -499,12 +447,119 @@ results <- yelp_nn %>% evaluate(x_test, y_test)
 predictions <- yelp_nn %>% 
               predict(x_test)
 
+```
+
+
+```{r}
+
+tibble(observado = factor(y_test)) %>% 
+  bind_cols(data.frame(prob = predict(yelp_nn, as.matrix(x_test)))) %>% 
+  roc_auc(observado, prob)
+
+tibble(observado = factor(y_test)) %>% 
+  bind_cols(data.frame(prob = predict(yelp_nn, as.matrix(x_test)))) %>% 
+  roc_curve(observado, prob) %>% 
+  autoplot()
+
+```
+
+# Recomendação
+
+Seleção do usário
+
+```{r}
+
+user <- yelp_raw[5,]$user_id
+
+user_cluster <- yelp_usr_cluster %>% 
+  filter(user_id == user)
+
+yelp_users %>% 
+   filter(user_id == user)
+
+## predict cluster do usuário
+user <- yelp_users %>% 
+   filter(user_id == user)
+kmeans_usr %>% 
+  predict(user)
+
+reviewed <- yelp_raw %>% 
+  filter(user_id == user)
+
+skim(reviewed)
+
+to_go <-yelp_raw %>% 
+  filter(cluster_usr == user_cluster$cluster)
+
 
 ```
 
 
 ```{r}
 
+id <- yelp_raw[5,]$user_id
+
+recommendation <- function(id){
+  
+  user <- yelp_users %>% 
+   filter(user_id == id)
+  
+  #predict do cluster
+  
+  user_cluster <- yelp_usr_cluster %>% 
+              filter(user_id == user$user_id) %>% 
+              select(cluster)
+  
+  
+  yelp_rv <- yelp_raw %>% 
+  #mutate(line = row_number()) %>% 
+  select(-'cool',-'date',-'funny',-'useful',-'cluster_usr') %>% 
+  mutate(stars = replace(stars >= 4,1,0)) %>% 
+  select_if(is.numeric)
+  
+  reviewed <- yelp_raw %>% 
+        filter(user_id == id) %>% 
+        select(-'cool',-'date',-'funny',-'useful',-'cluster_usr') %>% 
+        mutate(stars = replace(stars >= 4,1,0)) %>% 
+        select_if(is.numeric)
+  
+  to_go <- yelp_raw %>% 
+    filter(cluster_usr == user_cluster$cluster) %>% 
+    select(business_id) %>% 
+    distinct()
+    
+  
+    select(-'cool',-'date',-'funny',-'useful',-'cluster_usr') %>% 
+    mutate(stars = replace(stars >= 4,1,0)) %>% 
+    select_if(is.numeric)
+
+  
+  to_review <-  reviewed %>% 
+    bind_rows(to_go)
+  
+  
+tail(to_review)
+    
+  # juntar linhas dos restaurantes a serem avaliados
+
+    
+  glimpse(to_go)
+  
+  user_x_test <- select(to_review, -stars) %>% 
+          scale() %>% 
+          as.matrix()
+
+  user_y_test <- as.numeric(to_review$stars)
+  
+  results <- yelp_nn %>% 
+    evaluate(user_x_test, user_y_test)
+  
+  predictions <- yelp_nn %>% 
+              predict(user_x_test)
+  
+  
+  
+}
 
 
 
