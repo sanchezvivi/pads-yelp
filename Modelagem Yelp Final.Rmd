@@ -315,7 +315,7 @@ plot(plot_arvore)
 
 ## Rede Neural
 
-### Treino 
+### Treino do modelo
 Leitura da base final
 
 ```{r}
@@ -333,7 +333,7 @@ glimpse(yelp_raw)
 
 yelp_rv <- yelp_raw %>% 
   #mutate(line = row_number()) %>% 
-  #select(-'cool',-'date',-'funny',-'useful',-'cluster_usr') %>% 
+  select(-'year_rv') %>% 
   mutate(stars_rv = replace(stars_rv >= 4,1,0)) %>% 
   select_if(is.numeric) #%>% sample_frac(0.50)
 
@@ -349,38 +349,26 @@ set.seed(123)
 idx <- sample(c(1, 2, 3), size = nrow(yelp_rv), replace = TRUE)
   
 x_tr <- select(yelp_rv[idx == 1, ], -stars_rv) %>% 
-          scale() %>% 
+          #scale() %>% 
           as.matrix()
 
 y_tr <- as.numeric(yelp_rv$stars_rv[idx == 1])
 
 
 x_val <- select(yelp_rv[idx == 2, ], -stars_rv) %>%
-          scale() %>% 
+          #scale() %>% 
           as.matrix()
 
 y_val <- as.numeric(yelp_rv$stars_rv[idx == 2])
 
 
 x_test <- select(yelp_rv[idx == 3, ], -stars_rv) %>% 
-          scale() %>% 
+          #scale() %>% 
           as.matrix()
 
 y_test <- as.numeric(yelp_rv$stars_rv[idx == 3])
 
 ```
-
-
-```{r}
-
-
-str(user_x_test)
-
-str(x_test)
-
-```
-
-
 
 ```{r}
 
@@ -417,7 +405,6 @@ results <- yelp_nn %>% evaluate(x_test, y_test)
 predictions <- yelp_nn %>% 
               predict(x_test)
 
-yelp_nn %>% predict(x_test)
 
 dim(x_test)
 
@@ -524,10 +511,10 @@ skim(to_review)
 recommendation <- function(user, reviewed_usr){
   
   to_go <- yelp_raw %>% 
-    filter(stars >= 4) %>% 
+    filter(stars_rv >= 4) %>% 
     filter(cluster_usr == user$cluster_usr) %>% 
     select(business_id) %>% 
-    distinct()# %>% 
+    distinct() # %>% 
     #left_join(., yelp_bz_raw, by = 'business_id')
   
   n_go <- nrow(to_go)
@@ -536,36 +523,85 @@ recommendation <- function(user, reviewed_usr){
             bind_rows(replicate(n_go-1, user, simplify = FALSE)) %>% #replica as informações do usuário
             bind_cols(to_go) %>% #junta os estabelecimentos e notas dadas
             left_join(., yelp_bz_raw, by = 'business_id')
-  
-    str(to_review)
-  glimpse(to_review)
+
   
 user_x_test <- to_review %>% 
           select_if(is.numeric) %>% 
           #select(-stars_rv) %>% 
           #scale() %>% 
-          as.matrix() %>% 
-          scale()
+          as.matrix() 
 
-  str(x_test)
-  str(user_x_test)
+predictions <- as_tibble(predict(yelp_nn, user_x_test))
 
-predictions <- yelp_nn %>% 
-              predict(user_x_test)
-
-  user_y_test <- as.numeric(to_review$stars_rv)
-  
-  results <- yelp_nn %>% 
-    evaluate(user_x_test, user_y_test)
-
-  recommendation <- to_go %>% 
+  recommendation <- to_review %>% 
     bind_cols(pred = predictions) %>% 
-    sort(pred, decreasing = TRUE) %>% 
-    anti_join(user_hist$business_id, by = 'business_id')
-  
+    anti_join(., reviewed_usr, by = 'business_id')
+
 }
 
+tidy_pca %>%
+  filter(component %in% paste0("PC", 1:5)) %>%
+  group_by(component) %>%
+  
+  ungroup() %>%
+  mutate(terms = reorder_within(terms, abs(value), component)) %>%
+  ggplot(aes(abs(value), terms, fill = value > 0)) +
+  geom_col() +
+  facet_wrap(~component, scales = "free_y") +
+  scale_y_reordered() +
+  labs(
+    x = "Valor absoluto da contribuição",
+    y = NULL, fill = "Positiva?")
 
+
+
+```
+
+```{r}
+
+#top 5 recomendações por categoria
+
+  recommendation %>% 
+    filter(V1 > 0.5) %>% 
+    #group_by(categories) %>% 
+    top_n(5, V1) %>%
+    arrange(-V1) %>% 
+    #ungroup() %>%
+    #mutate(name = reorder_within(name, V1)) %>%
+    ggplot(aes(x = V1, y = name)) +
+    geom_col() +
+    #facet_wrap(~categories, scales = "free_y") +
+    #scale_y_reordered() +
+    labs(x = "Probabilidade de avaliação positiva",
+    y = 'Recomendação')
+
+
+
+    
+
+
+```
+
+```{r}
+
+library(leaflet)
+
+m <- leaflet() %>%
+  addTiles() %>%  # Add default OpenStreetMap map tiles
+  addMarkers(lng=174.768, lat=-36.852, popup="The birthplace of R")
+m 
+
+Í#mapa com as top 5 recomendações
+  
+  recommendation %>% 
+    filter(V1 > 0.5) %>% 
+    top_n(5, V1) %>%
+    arrange(V1) %>% 
+    mutate(rank = as.factor(row_number())) %>% 
+    #select(name, longitude, latitude)
+    ggplot(aes(x = longitude, y = latitude, color = rank)) +
+    geom_point()+
+    geom_text_repel(aes(label = name), size = 3)
 
 
 ```
