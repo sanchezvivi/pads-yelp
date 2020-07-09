@@ -57,14 +57,11 @@ yelp_users <- list.files(path = 'output/yelp_usr.csv/',
                        full.names = TRUE) %>% 
             map_df(~read_csv(.))
 
-?daisy
-
 ```
 
 # Business
 
 Clusterização dos estabelecimentos por semelhança de atributos
-
 
 ```{r}
 
@@ -75,90 +72,13 @@ yelp_bz <- yelp_bz_raw %>%
   
 ```
 
-## Matriz de dissimilaridades
-
-Distância Euclidiana é válida para intervalos contínuos. Como a base possui diferentes atributos, será utilizada a distância de Gower, que é mais apropriada para dados misturados
-
-```{r}
-
-bz_gower <- daisy(yelp_bz, metric = 'gower')
-
-gower_mat <- as.matrix(bz_gower)
-
-dim(gower_mat)
-
-# Output most similar pair
-#yelp_bz[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]),arr.ind = TRUE)[1, ], ]
-
-# Output most dissimilar pair
-#yelp_bz[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]), arr.ind = TRUE)[1, ], ]
-
-```
-
-## MDS (lento)
-
-```{r}
-
-mds <- cmdscale(gower_mat, k = 35, eig = TRUE)
-
-?cmdscale
-
-barplot(mds$eig)
-
-cumsum(mds$eig) / sum(mds$eig)
-
-# ggplot(mapping = aes(x = factor(1:length(mds$eig)), y = mds$eig)) +
-#     geom_col() +
-#     labs(x = "", y = "")
-
-hc <- hclust(dist(mds$points[, 1:2]))
-
-ggdendrogram(hc, rotate = TRUE, size = 2, labels = TRUE) +
-    labs(title = "Concorrência no mercado automobilístico")
-
-cutree(hc, k = 3)
-
-
-
-```
-
-
-## HCLUST
-
-```{r}
-## Hclust
-
-bz_hclust <- hclust(bz_gower)
-
-clust <- cutree(hclust, k = 10)
-
-ggdendrogram(hclust, rotate = TRUE, labels = TRUE) +
-    labs(title = "Categorias em Toronto - Gower")
-
-fviz_dend(hclust, cex = 0.5, k = 5,
-          main = "Categorias em Toronto - Euclidiana",
-          color_labels_by_k = TRUE, horiz = TRUE)
-
-
-yelp_bz_clust <- yelp_bz_raw %>% 
-                mutate(cluster = clust)
-
-
-yelp_bz_clust %>% 
-  ggplot(aes(longitude,latitude, color = cluster)) +
-           geom_point()
-
-```
-
-
 ## PCA
 
-```{r}
+Será aplicada uma análise de componentes principais para entender a variabilidade da nota dos estabelecimentos considerando seus atributos.
 
-yelp_bz_pca <-  yelp_bz_raw %>% 
-                select_if(~is_numeric(.))
+```{r}
   
-rec_pca <- recipe(stars ~ ., yelp_bz_pca) %>% 
+rec_pca <- recipe(stars ~ ., yelp_bz) %>% 
   update_role(contains('id'), new_role = 'id') %>% 
   #step_date(date_rv, yelping_since_usr, features = c("dow", "month","year")) %>% 
   #step_other(categories, threshold = 0.005) %>% 
@@ -173,6 +93,7 @@ yelp_bz_pca <- juice(rec_pca)
 
 ```
 
+### Scree plot
 
 ```{r}
 
@@ -186,6 +107,9 @@ fviz_eig(variance_pct, addlabels = TRUE) +
 
 ```
 
+Mais de 50% da variabilidade é explicada pelas 5 primeiras componentes, que são compostas da seguinte forma:
+
+### Drivers
 
 ```{r}
 
@@ -194,7 +118,7 @@ tidy_pca <- tidy(rec_pca, 2)
 tidy_pca %>%
   filter(component %in% paste0("PC", 1:5)) %>%
   group_by(component) %>%
-  top_n(5, abs(value)) %>%
+  top_n(10, abs(value)) %>%
   ungroup() %>%
   mutate(terms = reorder_within(terms, abs(value), component)) %>%
   ggplot(aes(abs(value), terms, fill = value > 0)) +
@@ -205,18 +129,25 @@ tidy_pca %>%
     x = "Valor absoluto da contribuição",
     y = NULL, fill = "Positiva?")
 
+
+```
+
+Na primeira componente, os pesos são igualmente distribuídos, o que indica ........
+
+Pela segunda componentem observa-se que a existência de um local para deixar o casaco e ser permitido fumar melhoram a nota do estabelecimento, assim como a localização e possibilidade de fazer reservas.
+Por outro lado, cobrança de rolha e necessidade de levar a bebida, possuem impactos negativos na nota.
+
+## Contrastes
+
+```{r}
+
 variance_pct %>% 
   fviz_pca_var(axes = c(1,2), col.var="contrib", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"))
 
-pca_cols <- tidy_pca %>%
-  filter(component %in% paste0("PC", 1:5)) %>%
-  group_by(component) %>%
-  top_n(1, abs(value)) %>%
-  ungroup() %>% 
-  select(terms) %>% 
-  as.vector()
 
 ```
+
+Os maiores contrastes são entre..........
 
 ## K-means
 
@@ -255,15 +186,7 @@ clusterings %>%
     labs(y = "total within sum of squares", x = "k") +
     scale_x_continuous(breaks = 1:50)
 
-
-#k-means
-assignments %>% 
-  ggplot(aes(x = longitude, y = latitude)) +
-  geom_point(aes(color = .cluster), alpha = 0.5) + 
-  facet_wrap(~ k)
-
 ```
-
 
 ```{r}
 
@@ -280,17 +203,22 @@ write.csv(yelp_bz_cluster, file = "output/bz_cluster.csv")
 ```
 
 # Users
+
+Classificação dos usuários conforme o perfil.
+
 ## KMeans
 
 ```{r}
 
 set.seed(123)
 
+glimpse(yelp_users)
+
 yelp_pad <- yelp_users %>% 
               select(-user_id) %>% 
               scale()
 
-kclusts <- tibble(k = 1:20) %>%
+kclusts <- tibble(k = 1:30) %>%
   mutate(kclust = map(k, ~kmeans(yelp_pad, .x)),
         tidied = map(kclust, tidy),
         glanced = map(kclust, glance),
@@ -306,38 +234,55 @@ assignments <- kclusts %>%
 clusterings <- kclusts %>%
   unnest(cols = c(glanced))
 
+```
+
+```{r}
+
+### Cotovelo
+
 clusterings %>% 
   ggplot(aes(k, tot.withinss)) + 
     geom_point(size = 3) + 
     geom_line() + 
     labs(y = "total within sum of squares", x = "k") +
-    scale_x_continuous(breaks = 1:20)
-
+    scale_x_continuous(breaks = 1:30)
 
 ```
 
 ```{r}
 
-set.seed(123)
-kmeans_usr <-  kmeans(yelp_pad, 7)
-
-yelp_usr_cluster <- yelp_users %>% 
-          #select(user_id) %>% 
-          mutate(cluster = kmeans_usr$cluster)
-
-glimpse(yelp_usr_cluster)
+#k-means
+assignments %>% 
+  ggplot(aes(x = year_since, y = average_stars)) +
+  geom_point(aes(color = .cluster), alpha = 0.5) + 
+  facet_wrap(~ k)
 
 ```
 
+
+```{r}
+
+set.seed(123)
+kmeans_usr <-  kmeans(yelp_pad, 11)
+
+yelp_usr_cluster <- yelp_users %>% 
+          mutate(cluster = kmeans_usr$cluster)
+
+```
+
+
+Pelo gráfico, observa-se claramente a divisão dos usuários em relação ao tempo na plataforma, a nota média e a quantidade de fãs.
 
 ```{r}
 
 plot_ly(yelp_usr_cluster, x = ~year_since, 
                y = ~average_stars,
-               z = ~fans, color = ~cluster) %>% 
-  add_markers()
-
-
+               z = ~fans, color = ~cluster,
+              text = ~paste('Cluster: ', cluster)) %>% 
+  add_markers() %>% 
+  layout(scene = list(xaxis = list(title = 'No Yelp desde'),
+                                   yaxis = list(title = 'Nota Média'),
+                                   zaxis = list(title = 'Quantidade de fãs')))
 
 ```
 
@@ -350,11 +295,27 @@ yelp_usr_cluster %>%
 
 ```
 
+## Modelo para definição do cluster do usuário
 
+```{r}
+
+library(rpart)
+library(partykit) 
+
+user_cluster_tree <- yelp_usr_cluster %>% 
+                    select(-user_id) %>% 
+                    rpart(cluster ~ ., data = .)
+
+plot_arvore <- as.party(user_cluster_tree)
+
+plot(plot_arvore)
+
+```
 
 
 ## Rede Neural
 
+### Treino 
 Leitura da base final
 
 ```{r}
@@ -363,19 +324,17 @@ yelp_raw <- list.files(path = 'output/yelp.csv/',
                        pattern = "*.csv",
                        full.names = TRUE) %>% 
             map_df(~read_csv(.))
-
-skim(yelp_raw)
+glimpse(yelp_raw)
 
 ```
-
 
 
 ```{r}
 
 yelp_rv <- yelp_raw %>% 
   #mutate(line = row_number()) %>% 
-  select(-'cool',-'date',-'funny',-'useful',-'cluster_usr') %>% 
-  mutate(stars = replace(stars >= 4,1,0)) %>% 
+  #select(-'cool',-'date',-'funny',-'useful',-'cluster_usr') %>% 
+  mutate(stars_rv = replace(stars_rv >= 4,1,0)) %>% 
   select_if(is.numeric) #%>% sample_frac(0.50)
 
 glimpse(yelp_rv)
@@ -389,27 +348,38 @@ set.seed(123)
 
 idx <- sample(c(1, 2, 3), size = nrow(yelp_rv), replace = TRUE)
   
-x_tr <- select(yelp_rv[idx == 1, ], -stars) %>% 
+x_tr <- select(yelp_rv[idx == 1, ], -stars_rv) %>% 
           scale() %>% 
           as.matrix()
 
-y_tr <- as.numeric(yelp_rv$stars[idx == 1])
+y_tr <- as.numeric(yelp_rv$stars_rv[idx == 1])
 
 
-x_val <- select(yelp_rv[idx == 2, ], -stars) %>%
+x_val <- select(yelp_rv[idx == 2, ], -stars_rv) %>%
           scale() %>% 
           as.matrix()
 
-y_val <- as.numeric(yelp_rv$stars[idx == 2])
+y_val <- as.numeric(yelp_rv$stars_rv[idx == 2])
 
 
-x_test <- select(yelp_rv[idx == 3, ], -stars) %>% 
+x_test <- select(yelp_rv[idx == 3, ], -stars_rv) %>% 
           scale() %>% 
           as.matrix()
 
-y_test <- as.numeric(yelp_rv$stars[idx == 3])
+y_test <- as.numeric(yelp_rv$stars_rv[idx == 3])
 
 ```
+
+
+```{r}
+
+
+str(user_x_test)
+
+str(x_test)
+
+```
+
 
 
 ```{r}
@@ -447,6 +417,10 @@ results <- yelp_nn %>% evaluate(x_test, y_test)
 predictions <- yelp_nn %>% 
               predict(x_test)
 
+yelp_nn %>% predict(x_test)
+
+dim(x_test)
+
 ```
 
 
@@ -465,96 +439,127 @@ tibble(observado = factor(y_test)) %>%
 
 # Recomendação
 
-Seleção do usário
+Criação de um usuário e definição de seu cluster
 
 ```{r}
 
-user <- yelp_raw[5,]$user_id
+rm(user)
 
-user_cluster <- yelp_usr_cluster %>% 
-  filter(user_id == user)
+compliment_max <- 15
 
-yelp_users %>% 
-   filter(user_id == user)
+user <- tibble(user_id = 'random_user',
+               average_stars = round(runif(1, 1.0, 5),2),
+               compliment_cool = ceiling(runif(1,0, compliment_max)),
+               compliment_cute = ceiling(runif(1,0, compliment_max)),
+               compliment_funny = ceiling(runif(1,0, compliment_max)),
+               compliment_hot  = ceiling(runif(1,0, compliment_max)),
+               compliment_list = ceiling(runif(1,0, compliment_max)),
+               compliment_more = ceiling(runif(1,0, compliment_max)),
+               compliment_note = ceiling(runif(1,0, compliment_max)),
+               compliment_photos = ceiling(runif(1,0, compliment_max)),
+               compliment_plain = ceiling(runif(1,0, compliment_max)),
+               compliment_profile = ceiling(runif(1,0, compliment_max)),
+               compliment_writer = ceiling(runif(1,0, compliment_max)),
+               cool = ceiling(runif(1,0, compliment_max)),
+               elite_count = 0,
+               fans = ceiling(runif(1,0, compliment_max)),
+               friends_count = ceiling(runif(1,0, compliment_max)),
+               funny = ceiling(runif(1,0, compliment_max)),
+               review_count_usr = ceiling(runif(1,0,compliment_max)),
+               useful = ceiling(runif(1,0, compliment_max)),
+               year_since = ceiling(runif(1,2009, 2019))
+                )
 
-## predict cluster do usuário
-user <- yelp_users %>% 
-   filter(user_id == user)
-kmeans_usr %>% 
-  predict(user)
+## criação aleatória do número de anos que o usuário foi elite
+user$elite_count <- ceiling(runif(1,0, (2020-user$year_since)))
 
-reviewed <- yelp_raw %>% 
-  filter(user_id == user)
+user$cluster_usr <- user_cluster_tree %>%
+      predict(user) %>% 
+      ceiling()
+  
+glimpse(user)
 
-skim(reviewed)
+glimpse(yelp_usr_cluster)
 
-to_go <-yelp_raw %>% 
-  filter(cluster_usr == user_cluster$cluster)
+# seleção aleatória de estabelecimentos e notas atribuídas a cada um baseado no número de reviews
+
+n_reviews <- user$review_count_usr
+
+reviewed_usr <- tibble(business_id = sample(yelp_bz_raw$business_id, n_reviews),
+                                            stars_rv = ceiling(runif(n_reviews, 1.0, 5)),
+                                            year_rv = ceiling(runif(1,2009, 2019)),
+                                            )
+user_hist <- user %>% 
+            bind_rows(replicate(n_reviews-1, user, simplify = FALSE)) %>% #replica as informações do usuário
+            bind_cols(reviewed_usr) %>% #junta os estabelecimentos e notas dadas
+            left_join(., yelp_bz_raw, by = 'business_id') #junta as informações dos estabelecimentos
+
+glimpse(user_hist)
 
 
 ```
 
 
 ```{r}
+library(zoo)
 
-id <- yelp_raw[5,]$user_id
+to_go <- yelp_raw %>% 
+  filter(stars >= 4) %>% 
+  filter(cluster_usr == user$cluster_usr) %>% 
+  select(business_id) %>% 
+  distinct() %>% 
+  left_join(., yelp_bz_raw, by = 'business_id')
 
-recommendation <- function(id){
-  
-  user <- yelp_users %>% 
-   filter(user_id == id)
-  
-  #predict do cluster
-  
-  user_cluster <- yelp_usr_cluster %>% 
-              filter(user_id == user$user_id) %>% 
-              select(cluster)
-  
-  
-  yelp_rv <- yelp_raw %>% 
-  #mutate(line = row_number()) %>% 
-  select(-'cool',-'date',-'funny',-'useful',-'cluster_usr') %>% 
-  mutate(stars = replace(stars >= 4,1,0)) %>% 
-  select_if(is.numeric)
-  
-  reviewed <- yelp_raw %>% 
-        filter(user_id == id) %>% 
-        select(-'cool',-'date',-'funny',-'useful',-'cluster_usr') %>% 
-        mutate(stars = replace(stars >= 4,1,0)) %>% 
-        select_if(is.numeric)
+to_review <- user_hist %>% 
+             bind_rows(to_go) %>% 
+             #mutate(stars_rv, replace(., is.na(.), 0)) %>% 
+             na.locf() #preenche linhas vazias com informação do usuário
+
+skim(to_review)
+
+```
+
+```{r}
+
+recommendation <- function(user){
   
   to_go <- yelp_raw %>% 
-    filter(cluster_usr == user_cluster$cluster) %>% 
+    filter(stars >= 4) %>% 
+    filter(cluster_usr == user$cluster_usr) %>% 
     select(business_id) %>% 
-    distinct()
-    
+    distinct() %>% 
+    left_join(., yelp_bz_raw, by = 'business_id')
   
-    select(-'cool',-'date',-'funny',-'useful',-'cluster_usr') %>% 
-    mutate(stars = replace(stars >= 4,1,0)) %>% 
-    select_if(is.numeric)
 
+  to_review <- user_hist %>% 
+             bind_rows(to_go) %>% 
+             na.locf() #preenche linhas vazias com informação do usuário
   
-  to_review <-  reviewed %>% 
-    bind_rows(to_go)
+  ?na.locf
   
+  skim(to_review)
   
-tail(to_review)
-    
-  # juntar linhas dos restaurantes a serem avaliados
-
-  glimpse(to_go)
-  
-  user_x_test <- select(to_review, -stars) %>% 
+user_x_test <- to_review %>% 
+          select_if(is.numeric) %>% 
+          select(-stars_rv) %>% 
           scale() %>% 
           as.matrix()
 
-  user_y_test <- as.numeric(to_review$stars)
+  str(x_test)
+  str(user_x_test)
+
+predictions <- yelp_nn %>% 
+              predict(user_x_test)
+
+  user_y_test <- as.numeric(to_review$stars_rv)
   
   results <- yelp_nn %>% 
     evaluate(user_x_test, user_y_test)
-  
-  predictions <- yelp_nn %>% 
-              predict(user_x_test)
+
+  recommendation <- to_go %>% 
+    bind_cols(pred = predictions) %>% 
+    sort(pred, decreasing = TRUE) %>% 
+    anti_join(user_hist$business_id, by = 'business_id')
   
 }
 
@@ -562,8 +567,6 @@ tail(to_review)
 
 
 ```
-
-
 
 
 # Referências
