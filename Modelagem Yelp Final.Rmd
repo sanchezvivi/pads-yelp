@@ -473,21 +473,19 @@ user <- tibble(user_id = 'random_user',
 ## criação aleatória do número de anos que o usuário foi elite
 user$elite_count <- ceiling(runif(1,0, (2020-user$year_since)))
 
+
+#encontra o número do cluster em que o usuário se encaixa
 user$cluster_usr <- user_cluster_tree %>%
       predict(user) %>% 
       ceiling()
   
-glimpse(user)
-
-glimpse(yelp_usr_cluster)
-
 # seleção aleatória de estabelecimentos e notas atribuídas a cada um baseado no número de reviews
 
 n_reviews <- user$review_count_usr
 
 reviewed_usr <- tibble(business_id = sample(yelp_bz_raw$business_id, n_reviews),
                                             stars_rv = ceiling(runif(n_reviews, 1.0, 5)),
-                                            year_rv = ceiling(runif(1,2009, 2019)),
+                                            year_rv = ceiling(runif(n_reviews, 2009, 2019)),
                                             )
 user_hist <- user %>% 
             bind_rows(replicate(n_reviews-1, user, simplify = FALSE)) %>% #replica as informações do usuário
@@ -501,6 +499,7 @@ glimpse(user_hist)
 
 
 ```{r}
+
 library(zoo)
 
 to_go <- yelp_raw %>% 
@@ -512,8 +511,9 @@ to_go <- yelp_raw %>%
 
 to_review <- user_hist %>% 
              bind_rows(to_go) %>% 
-             #mutate(stars_rv, replace(., is.na(.), 0)) %>% 
-             na.locf() #preenche linhas vazias com informação do usuário
+             na.locf.default() #preenche linhas vazias com informação do usuário
+
+?fill
 
 skim(to_review)
 
@@ -521,29 +521,31 @@ skim(to_review)
 
 ```{r}
 
-recommendation <- function(user){
+recommendation <- function(user, reviewed_usr){
   
   to_go <- yelp_raw %>% 
     filter(stars >= 4) %>% 
     filter(cluster_usr == user$cluster_usr) %>% 
     select(business_id) %>% 
-    distinct() %>% 
-    left_join(., yelp_bz_raw, by = 'business_id')
+    distinct()# %>% 
+    #left_join(., yelp_bz_raw, by = 'business_id')
   
-
-  to_review <- user_hist %>% 
-             bind_rows(to_go) %>% 
-             na.locf() #preenche linhas vazias com informação do usuário
+  n_go <- nrow(to_go)
   
-  ?na.locf
+  to_review <- user %>% 
+            bind_rows(replicate(n_go-1, user, simplify = FALSE)) %>% #replica as informações do usuário
+            bind_cols(to_go) %>% #junta os estabelecimentos e notas dadas
+            left_join(., yelp_bz_raw, by = 'business_id')
   
-  skim(to_review)
+    str(to_review)
+  glimpse(to_review)
   
 user_x_test <- to_review %>% 
           select_if(is.numeric) %>% 
-          select(-stars_rv) %>% 
-          scale() %>% 
-          as.matrix()
+          #select(-stars_rv) %>% 
+          #scale() %>% 
+          as.matrix() %>% 
+          scale()
 
   str(x_test)
   str(user_x_test)
