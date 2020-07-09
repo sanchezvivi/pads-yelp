@@ -589,7 +589,22 @@ recommendation %>%
     geom_point()+
     geom_text_repel(aes(label = name), size = 3)
 
+#categorias
 
+recommendation %>% 
+  unnest_tokens(category, categories) %>% 
+  filter(category %in% c('food', 'restaurants','pub','bar','club')) %>% 
+  group_by(category) %>%
+  mutate(pred_avg = mean(V1)) %>% 
+  select(name, V1, category, pred_avg) %>% 
+  arrange(-pred_avg) %>% 
+  top_n(n = 5, wt = V1) %>% 
+  mutate(name = reorder_within(name, -V1, category)) %>%
+  ggplot(aes(V1, name, fill = category)) +
+  geom_col(show.legend = TRUE) +
+  facet_wrap(~category, scales = 'free_y') +
+  scale_y_reordered() +
+  labs( x = 'Probabilidade de boa avaliação')
 
 
 ```
