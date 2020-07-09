@@ -411,8 +411,10 @@ rm(yelp_nn)
 
 yelp_nn <- keras_model_sequential() %>% 
   layer_dense(units = 30, activation = "tanh", input_shape = ncol(x_train)) %>%
-  layer_dense(units = 15, activation = "relu") %>%
-  layer_dense(units = 5, activation = "relu") %>%
+  #layer_dropout(rate = 0.5) %>%
+  layer_dense(units = 16, activation = "relu") %>%
+  #layer_dropout(rate = 0.5) %>%
+  #layer_dense(units = 16, activation = "relu") %>%
   #layer_dense(units = 6, activation = "softmax")
   layer_dense(units = 1, activation = "sigmoid")
 
@@ -428,21 +430,16 @@ yelp_nn %>%
 
 history <- yelp_nn %>% 
   fit(x_train, y_train, 
-      epochs = 80, batch_size = 512, 
+      epochs = 40, batch_size = 512, 
       validation_data = list(x_val, y_val))
 
 keras::get_weights(yelp_nn)
 
-results <- yelp_nn %>% evaluate(x_test, y_test)
-
-
-#probabilidade de ser um bom review
-predictions <- yelp_nn %>% 
-              predict(x_test)
+(results <- yelp_nn %>% evaluate(x_test, y_test))
 
 ```
 
-
+# Desempenho do modelo
 ```{r}
 
 tibble(observado = factor(y_test)) %>% 
@@ -515,6 +512,8 @@ glimpse(user_hist)
 
 
 ```
+
+## Função para recomendaão
 
 ```{r}
 
