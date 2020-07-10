@@ -30,10 +30,6 @@ library(reticulate)
 # Leitura de arquivos individuais
 
 ```{r eval=FALSE, include=FALSE}
-```
-
-
-```{r eval=FALSE, include=FALSE}
 yelp_bz_raw <- list.files(path = 'output/yelp_bz.csv/', 
                        pattern = "*.csv",
                        full.names = TRUE) %>% 
@@ -51,8 +47,6 @@ yelp_users <- list.files(path = 'output/yelp_usr.csv/',
 Clusterização dos estabelecimentos por semelhança de atributos
 
 ```{r}
-
-glimpse(yelp_bz_raw)
 
 yelp_bz <- yelp_bz_raw %>% 
           select_if(~is.numeric(.)) %>% 
@@ -108,7 +102,7 @@ tidy_pca <- tidy(rec_pca, 2)
 tidy_pca %>%
   filter(component %in% paste0("PC", 1:6)) %>%
   group_by(component) %>%
-  top_n(10, abs(value)) %>%
+  top_n(15, abs(value)) %>%
   ungroup() %>%
   mutate(terms = reorder_within(terms, abs(value), component)) %>%
   ggplot(aes(abs(value), terms, fill = value > 0)) +
@@ -122,10 +116,10 @@ tidy_pca %>%
 
 ```
 
-Na primeira componente, os pesos são igualmente distribuídos, o que indica ........
+Na primeira componente, os pesos são igualmente distribuídos, o que indica que todos os atributos tem impacto semelhante na maior parte da variabilidade.
 
-Pela segunda componentem observa-se que a existência de um local para deixar o casaco e ser permitido fumar melhoram a nota do estabelecimento, assim como a localização e possibilidade de fazer reservas.
-Por outro lado, cobrança de rolha e necessidade de levar a bebida, possuem impactos negativos na nota.
+Pela segunda componente, no entanto, observa-se que a existência de um local para deixar o casaco, ser permitido fumar e ser um bom local para dançar são mais relevante, assim como a localização (PC6).
+Além disso, cobrança de rolha e necessidade de levar a bebida também são drivers importantes, pois aparecem em mais de uma componente.
 
 ## Contrastes
 
@@ -137,13 +131,15 @@ variance_pct %>%
 
 ```
 
-Os maiores contrastes são entre..........
+Os maiores contrastes são entre a modalidade de atendimento dos restaurante: Apenas delivery ou com reservas.
 
 # Users
 
 Classificação dos usuários conforme o perfil.
 
 ## KMeans
+
+Será utilizada a clusterização k-médias por conta da quantidade de características dos usários presentes na base. Também foi tentada a aplicação de uma clusterização hierárquica, mas os resultados obtidos não foram tão interpretáveis como os seguintes.
 
 ```{r}
 
@@ -186,27 +182,32 @@ clusterings %>%
 
 ```
 
+Pelo gráfico do cotovelo, poderiam ser selecionado um número de clusters (k) de 11 a 17, a seguir é possível ver uma comparacão em relação às dicas.
+
 ```{r}
 
 #k-means
 assignments %>% 
-  ggplot(aes(x = year_since, y = average_stars)) +
+  filter(k %in% paste0(14:19)) %>%
+  ggplot(aes(x = tips_counter, y = total_compliments)) +
   geom_point(aes(color = .cluster), alpha = 0.5) + 
   facet_wrap(~ k)
 
 ```
 
+Para a classificação final dos usuário, será feita novamente a clusterização, mas considerando apenas o k ideal.
 
 ```{r}
 
 set.seed(123)
-kmeans_usr <-  kmeans(yelp_pad, 11)
+kmeans_usr <-  kmeans(yelp_pad, 14)
 
 yelp_usr_cluster <- yelp_users %>% 
-          mutate(cluster = kmeans_usr$cluster)
+          mutate(cluster_usr = kmeans_usr$cluster)
+
+glimpse(yelp_usr_cluster)
 
 ```
-
 
 Pelo gráfico, observa-se claramente a divisão dos usuários em relação ao tempo na plataforma, a nota média e a quantidade de fãs.
 
@@ -214,8 +215,8 @@ Pelo gráfico, observa-se claramente a divisão dos usuários em relação ao te
 
 plot_ly(yelp_usr_cluster, x = ~year_since, 
                y = ~average_stars,
-               z = ~fans, color = ~cluster,
-              text = ~paste('Cluster: ', cluster)) %>% 
+               z = ~fans, color = ~cluster_usr,
+              text = ~paste('Cluster: ', cluster_usr)) %>% 
   add_markers() %>% 
   layout(scene = list(xaxis = list(title = 'No Yelp desde'),
                                    yaxis = list(title = 'Nota Média'),
@@ -223,14 +224,15 @@ plot_ly(yelp_usr_cluster, x = ~year_since,
 
 ```
 
-
 ```{r}
 
 yelp_usr_cluster %>% 
-          select(user_id, cluster) %>%
+          select(user_id, cluster_usr) %>%
           write.csv(file = "output/usr_cluster.csv")
 
 ```
+
+Como próximos passos, seria interessante  entnder melhor as características de cada cluster. Para classificar usuário que não estão na base, será utilizado um modelo de árvore para fazer a classificação. O intuito é obter de uma forma rápida o cluster de um novo usuário.
 
 ## Modelo para definição do cluster do usuário
 
@@ -241,7 +243,7 @@ library(partykit)
 
 user_cluster_tree <- yelp_usr_cluster %>% 
                     select(-user_id) %>% 
-                    rpart(cluster ~ ., data = .)
+                    rpart(cluster_usr ~ ., data = .)
 
 plot_arvore <- as.party(user_cluster_tree)
 
@@ -352,7 +354,7 @@ rm(yelp_nn)
 
 yelp_nn <- keras_model_sequential() %>% 
   layer_dense(units = 30, activation = "tanh", input_shape = ncol(x_train)) %>%
-  #layer_dropout(rate = 0.5) %>%
+  layer_dropout(rate = 0.5) %>%
   layer_dense(units = 16, activation = "relu") %>%
   #layer_dropout(rate = 0.5) %>%
   layer_dense(units = 16, activation = "relu") %>%
@@ -380,6 +382,8 @@ keras::get_weights(yelp_nn)
 
 ```
 
+Foi adicionada uma camada de dropout na rede neural, para diminuir o overfit do modelo. Observa-se que funcionou, pois a perda da base de validação não ultrappassa a perda da base de treino.
+
 ### Desempenho do modelo
 ```{r}
 
@@ -394,17 +398,21 @@ tibble(observado = factor(y_test)) %>%
 
 ```
 
+Pelo gráfico, observa-se que o modelo atingiu um desempenho bom na base de teste.
+
 # Recomendação
 
 ## Usuário criado
 
-- Criação de um usuário e definição de seu cluster
+Criação de um usuário e definição de seu cluster
 
 ```{r}
 
+glimpse(yelp_usr_cluster)
+
 rm(user)
 
-compliment_max <- 100
+compliment_max <- 50
 
 user <- tibble(user_id = 'random_user',
                average_stars = round(runif(1, 1.0, 5),2),
@@ -426,7 +434,9 @@ user <- tibble(user_id = 'random_user',
                funny = ceiling(runif(1,0, compliment_max)),
                review_count_usr = ceiling(runif(1,0,compliment_max)),
                useful = ceiling(runif(1,0, compliment_max)),
-               year_since = ceiling(runif(1,2004, 2019))
+               year_since = ceiling(runif(1,2004, 2019)),
+               tips_counter = ceiling(runif(1,0, compliment_max)),
+               total_compliments = ceiling(runif(1,0, compliment_max))
                 )
 
 ## criação aleatória do número de anos que o usuário foi elite
@@ -443,7 +453,7 @@ glimpse(user)
 
 n_reviews <- user$review_count_usr
 
-reviewed_usr <- tibble(business_id = sample(yelp_bz_raw$business_id, n_reviews),
+reviewed_usr <- tibble(business_id = sample(yelp_bz_raw$business_id, n_reviews), #seleçao aleatória de estabelecimentos
                                             stars_rv = ceiling(runif(n_reviews, 1.0, 5)),
                                             year_rv = ceiling(runif(n_reviews, 2009, 2019)),
                                             )
@@ -465,42 +475,77 @@ recomm_f <- function(user, reviewed_usr){
   
   to_go <- yelp_raw %>% 
     filter(stars_rv >= 4) %>% 
-    #filter(cluster_usr == user$cluster_usr) %>% 
-    filter(cluster_usr == user$cluster) %>% 
+    filter(cluster_usr == user$cluster_usr) %>% 
+    #filter(cluster_usr == user$cluster) %>% 
     select(business_id) %>% 
     distinct() 
   
   n_go <- nrow(to_go)
   
+  #filtra todos os estabelecimentos do cluster do usuário e junta as informações para modelagem
   to_review <- user %>% 
             bind_rows(replicate(n_go-1, user, simplify = FALSE)) %>% #replica as informações do usuário
             bind_cols(to_go) %>% #junta os estabelecimentos e notas dadas
-            left_join(., yelp_bz_raw, by = 'business_id') %>% 
-            select(-tips_counter, -total_compliments)
-
+            left_join(., yelp_bz_raw, by = 'business_id')
+  
+  #prepara a base para o modelo
   user_x_test <- to_review %>% 
           select_if(is.numeric) %>% 
           #select(-stars_rv) %>% 
           scale(center = mean, scale = std) %>% 
           as.matrix()
 
+  #aplica a base no modelo
   predictions <- as_tibble(predict(yelp_nn, user_x_test))
-
+  
+  
+  #seleciona as principais recomendações
   recommendation <- to_review %>% 
     bind_cols(pred = predictions) %>% 
-    anti_join(., reviewed_usr, by = 'business_id')
+    anti_join(., reviewed_usr, by = 'business_id') %>% 
+    filter(V1 > 0.8)
 
 }
 
 ```
 
-## Usuário aleatório
+### Recomendação para usuário criado
+
+```{r}
+
+recommendation_new <- recomm_f(user,reviewed_usr)
+
+
+library(ggmap)
+
+Í#mapa com as top 5 recomendações
+
+top_5 <- recommendation_new %>% 
+    top_n(5, V1) %>%
+    arrange(-V1) %>% 
+    mutate(rank = as.factor(row_number()))
+
+top_5 %>% 
+  select(name, categories, V1)
+
+qmplot(longitude, latitude, data = top_5, 
+       maptype = "toner-background", 
+       color = rank,
+       size = V1)
+
+```
+
+## Usuário aleatório da base
+
+Para validar as recomendações, é feito o teste também com um usuário aleatório da base de teste.
 
 ```{r}
 
 n <- ceiling(runif(1,1,nrow(yelp_test)))
 
-random_user <- yelp_raw[n,]$user_id
+
+(random_user <- yelp_raw[n,]$user_id)
+
 
 user <- yelp_usr_cluster %>% 
             filter(user_id == random_user)
@@ -508,21 +553,17 @@ user <- yelp_usr_cluster %>%
 reviewed_usr <- yelp_raw %>% 
   filter(user_id == random_user)
 
-recommentation <- recomm_f(user,reviewed_usr)
+recommendation <- recomm_f(user,reviewed_usr)
   
 ```
 
-
-
-
-## Recomendação
+## Recomendação para usuário da base
 
 ```{r}
 
 #top 5 recomendações
 
   recommendation %>% 
-    filter(V1 > 0.5) %>% 
     #group_by(categories) %>% 
     top_n(5, V1) %>%
     arrange(-V1) %>% 
@@ -538,52 +579,29 @@ recommentation <- recomm_f(user,reviewed_usr)
 
 ```
 
-```{r}
-library(ggmap)
+### Recomendação por categoria
 
-Í#mapa com as top 5 recomendações
-  
-recommendation %>% 
-    filter(V1 > 0.5) %>% 
-    top_n(5, V1) %>%
-    arrange(-V1) %>% 
-    mutate(rank = as.factor(row_number())) %>% 
-    #select(name, longitude, latitude)
-    ggplot(aes(x = latitude, y = longitude, color = rank)) +
-    geom_point()+
-    geom_text_repel(aes(label = name), size = 3)
+```{r}
 
 #categorias
 
 recommendation %>% 
   unnest_tokens(category, categories) %>% 
-  filter(category %in% c('food', 'restaurants','bar','club')) %>% 
+  filter(category %in% c('food', 'restaurants','bar','club','pub','pizza','pasta','italian')) %>% 
   group_by(category) %>%
   mutate(pred_avg = mean(V1)) %>% 
-  top_n(n = 5, wt = V1) %>% 
   ungroup() %>% 
+  #arrange(-V1) %>% 
+  unique() %>% 
+  top_n(n = 5, wt = V1) %>%
   mutate(name = reorder_within(name, -V1, category)) %>%
   ggplot(aes(V1, name, fill = category)) +
   geom_col(show.legend = TRUE) +
-  facet_wrap(~category, scales = 'free_y') +
+  facet_wrap(~category, scales = 'free') +
+  scale_x_continuous() +
   scale_y_reordered() +
-  labs( x = 'Probabilidade de boa avaliação')
+  labs(x = 'Probabilidade de boa avaliação')
 
-
-```
-
-```{r}
-
-top_5 <- recommendation %>% 
-    filter(V1 > 0.5) %>% 
-    top_n(5, V1) %>%
-    arrange(-V1) %>% 
-    mutate(rank = as.factor(row_number()))
-
-qmplot(longitude, latitude, data = top_5, 
-       maptype = "toner-background", 
-       color = rank,
-       size = V1)
 
 ```
 
