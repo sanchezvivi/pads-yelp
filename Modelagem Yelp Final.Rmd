@@ -2,12 +2,14 @@
 title: "Integradora Yelp"
 author: "Marcelo Francheschini, Rafael Costa, Viviane Sanchez"
 date: "6/27/2020"
-output: github_document
-  #html_document: default
+#always_allow_html: true
+#output: github_document
+output:
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, fig.height=5, fig.width=10)
 ```
 
 ```{r include=FALSE}
@@ -351,7 +353,7 @@ y_test <- yelp_test %>%
 
 ### Modelo
 
-```{r}
+```{r fig.height=5, fig.width=10}
 
 rm(yelp_nn)
 
@@ -378,13 +380,13 @@ history <- yelp_nn %>%
 
 plot(history)
 
-keras::get_weights(yelp_nn)
+#keras::get_weights(yelp_nn)
 
 (results <- yelp_nn %>% evaluate(x_test, y_test))
 
 ```
 
-Foi adicionada uma camada de dropout na rede neural, para diminuir o overfit do modelo. Observa-se que funcionou, pois a perda da base de validação não ultrappassa a perda da base de treino.
+Foi adicionada uma camada de dropout na rede neural, para diminuir o overfit do modelo. Observa-se que foi efeciente, pois a perda da base de validação não ultrappassa a perda da base de treino.
 
 ### Desempenho do modelo
 ```{r}
@@ -505,7 +507,7 @@ recomm_f <- function(user, reviewed_usr){
   recommendation <- to_review %>% 
     bind_cols(pred = predictions) %>% 
     anti_join(., reviewed_usr, by = 'business_id') %>% 
-    filter(V1 > 0.8)
+    filter(V1 > 0.5)
 
 }
 
@@ -513,7 +515,7 @@ recomm_f <- function(user, reviewed_usr){
 
 ### Recomendação para usuário criado
 
-```{r echo =FALSE, include=TRUE, eval = FALSE}
+```{r eval=FALSE, include=FALSE}
 
 recommendation_new <- recomm_f(user, reviewed_usr)
 
@@ -546,13 +548,13 @@ n <- ceiling(runif(1,1,nrow(yelp_test)))
 (random_user <- yelp_raw[n,]$user_id)
 
 
-user <- yelp_usr_cluster %>% 
+user2 <- yelp_usr_cluster %>% 
             filter(user_id == random_user)
 
-reviewed_usr <- yelp_raw %>% 
+reviewed_usr2 <- yelp_raw %>% 
   filter(user_id == random_user)
 
-recommendation <- recomm_f(user,reviewed_usr)
+rec_user <- recomm_f(user2,reviewed_usr2)
   
 ```
 
@@ -562,35 +564,49 @@ recommendation <- recomm_f(user,reviewed_usr)
 
 #top 5 recomendações
 
-  recommendation %>% 
-    #group_by(categories) %>% 
+  rec_user %>% 
     top_n(5, V1) %>%
-    arrange(-V1) %>% 
-    #ungroup() %>%
-    #mutate(name = reorder_within(name, V1)) %>%
-    ggplot(aes(x = V1, y = name)) +
+    arrange(V1) %>% 
+    mutate(rank = as.factor(row_number())) %>% 
+    ggplot(aes(x = V1, y = name, fill = rank)) +
     geom_col() +
-    #facet_wrap(~categories, scales = "free_y") +
-    #scale_y_reordered() +
     labs(x = "Probabilidade de avaliação positiva",
     y = 'Recomendação')
   
 
 ```
 
+```{r}
+
+top_5 <- rec_user %>% 
+    top_n(5, V1) %>%
+    arrange(-V1) %>% 
+    mutate(rank = as.factor(row_number()))
+
+top_5 %>% 
+  select(name, categories, V1)
+
+qmplot(longitude, latitude, data = top_5, 
+       maptype = "toner-background", 
+       color = rank,
+       size = V1)
+
+
+```
+
+
 ### Recomendação por categoria
 
 ```{r fig.height=5, fig.width=10}
 
 #categorias
-
-recommendation %>% 
+rec_user %>% 
+  select(name, categories, V1) %>% 
   unnest_tokens(category, categories) %>% 
-  filter(category %in% c('food', 'restaurants','bar','club','pub','pizza','pasta','italian')) %>% 
+  filter(category %in% c('restaurants','bars','nightlife')) %>% 
   group_by(category) %>%
   mutate(pred_avg = mean(V1)) %>% 
   ungroup() %>% 
-  #arrange(-V1) %>% 
   unique() %>% 
   top_n(n = 5, wt = V1) %>%
   mutate(name = reorder_within(name, -V1, category)) %>%
@@ -601,8 +617,11 @@ recommendation %>%
   scale_y_reordered() +
   labs(x = 'Probabilidade de boa avaliação')
 
-
 ```
+
+# Conclusão
+
+
 
 # Referências
 
@@ -613,6 +632,4 @@ recommendation %>%
 - [Chollet, F. et al, Deep Learning with R](https://www.manning.com/books/deep-learning-with-r)
 - [Silge, J.](https://juliasilge.com/blog/sherlock-holmes-stm/)
 - https://www.datanovia.com/en/lessons/clustering-distance-measures/
-
-
-
+- Arquivos disponíveis no [repositório](https://github.com/sanchezvivi/pads-yelp)
