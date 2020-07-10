@@ -1,0 +1,519 @@
+---
+title: "Integradora Yelp"
+author: "Marcelo Francheschini, Rafael Costa, Viviane Sanchez"
+date: "6/27/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+library(tidymodels)
+library(tidytext)
+library(skimr)
+library(ggrepel)
+library(ggdendro)
+library(factoextra)
+library(vip)
+library(doParallel)
+
+```
+
+
+```{r}
+
+library(tidytext)
+library(tm)
+library(wordcloud)
+library(topicmodels)
+library(drlib)
+library(quanteda)
+library(stm)
+
+library(keras)
+library(reticulate)
+
+```
+
+# Leitura de arquivos
+
+```{r eval=FALSE, include=FALSE}
+
+yelp_raw <- list.files(path = 'output/yelp.csv/', 
+                       pattern = "*.csv",
+                       full.names = TRUE) %>% 
+            map_df(~read_csv(.))
+
+yelp_dist_raw <- list.files(path = 'output/yelp_dist.csv/', 
+                       pattern = "*.csv",
+                       full.names = TRUE) %>% 
+            map_df(~read_csv(.))
+
+yelp_words <- list.files(path = 'output/yelp_words.csv/', 
+                       pattern = "*.csv",
+                       full.names = TRUE) %>% 
+           map_df(~read_csv(.))
+  
+yelp_words <- yelp_words %>% 
+            mutate(line = row_number())
+
+```
+
+# Perfil dos usuários/reviews
+
+```{r}
+
+skim(yelp_raw)
+
+yelp_usr_raw <- yelp_raw %>% 
+        select(contains('id'), contains('usr'), contains('rv'),-rv_tip) %>%
+        #distinct() %>% 
+        mutate(yelping_since_usr = as.Date(yelping_since_usr),
+               date_rv = as.Date(date_rv))
+
+glimpse(yelp_usr_raw)
+
+
+skim(yelp)
+
+```
+
+### Split
+
+```{r}
+
+split <- initial_split(yelp_usr_raw, prop = 0.95)
+
+train <- training(split)
+test <- testing(split)
+
+```
+
+### Recipe
+
+```{r}
+
+rec_usr <- recipe(~ ., train) %>% 
+  update_role(contains('id'), new_role = 'id') %>% 
+  step_date(date_rv, yelping_since_usr, features = c("dow", "month","year")) %>% 
+  #step_other(categories, postal_code, threshold = 0.05) %>% 
+  #step_other(postal_code, threshold = 0.01) %>% 
+  #step_dummy(all_nominal(), -contains('id')) %>%
+  #step_normalize(all_numeric()) %>% 
+  step_naomit(all_predictors())
+  
+
+yelp_usr <- juice(prep(rec_usr))
+
+skim(yelp_usr)
+
+glimpse(yelp_usr)
+
+```
+
+## PCA
+
+```{r}
+
+skim(train)
+
+rec_pca <- recipe(stars_rv ~ ., train) %>% 
+  update_role(contains('id'), new_role = 'id') %>% 
+  step_date(date_rv, yelping_since_usr, features = c("dow", "month","year")) %>% 
+  #step_other(categories, threshold = 0.005) %>% 
+  #step_other(postal_code, threshold = 0.01) %>% 
+  #step_dummy(all_nominal(), -'business_id',-'user_id',-'name_bz') %>%
+  step_normalize(all_numeric(), -all_outcomes()) %>% 
+  step_pca(all_numeric(), -all_outcomes()) %>% 
+  step_naomit(all_numeric()) %>% 
+  prep()
+
+yelp_pca <- juice(rec_pca)
+
+skim(yelp_pca)
+
+glimpse(yelp_pca)
+
+skim(yelp)
+
+#pca_train  <- juice(rec_pca) 
+
+rec_pca$steps[[3]]$res
+
+  
+```
+
+
+### Scree Plot
+
+```{r}
+
+variance_pct <- rec_pca$steps[[3]]$res
+
+(cumsum(variance_pct$sdev^2) / sum(variance_pct$sdev^2))
+
+fviz_eig(variance_pct, addlabels = TRUE) + 
+  labs(x = "Componente Principal",
+       y = "Percentual explicado da variância")
+
+```
+
+### Componentes Principais
+
+```{r}
+
+tidy_pca <- tidy(rec_pca, 3)
+
+tidy_pca %>% 
+  filter(component %in% paste0("PC", 1:5)) %>%
+  mutate(component = fct_inorder(component)) %>%
+  ggplot(aes(value, terms, fill = terms)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~component) +
+  labs(y = NULL)
+
+```
+
+
+### Principais contribuições
+
+```{r}
+tidy_pca %>%
+  filter(component %in% paste0("PC", 1:5)) %>%
+  group_by(component) %>%
+  top_n(8, abs(value)) %>%
+  ungroup() %>%
+  mutate(terms = reorder_within(terms, abs(value), component)) %>%
+  ggplot(aes(abs(value), terms, fill = value > 0)) +
+  geom_col() +
+  facet_wrap(~component, scales = "free_y") +
+  scale_y_reordered() +
+  labs(
+    x = "Valor absoluto da contribuição",
+    y = NULL, fill = "Positiva?")
+
+```
+
+
+### Contrastes
+
+```{r}
+
+variance_pct %>% 
+  fviz_pca_var(axes = c(1,2), col.var="contrib", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"))
+
+```
+
+
+
+
+## K-means
+```{r}
+
+yelp_usr_km <- yelp_usr %>% 
+  select_if(.,is.numeric) %>% 
+  scale()
+
+```
+
+```{r}
+
+set.seed(123)
+
+kclusts <- tibble(k = 1:20) %>%
+  mutate(kclust = map(k, ~kmeans(yelp_usr_km, .x)),
+        tidied = map(kclust, tidy),
+        glanced = map(kclust, glance),
+        augmented = map(kclust, augment, yelp_usr_km)
+        )
+
+clusters <- kclusts %>%
+  unnest(cols = c(tidied))
+
+assignments <- kclusts %>% 
+  unnest(cols = c(augmented))
+
+clusterings <- kclusts %>%
+  unnest(cols = c(glanced))
+
+clusterings %>% 
+  ggplot(aes(k, tot.withinss)) + 
+    geom_point(size = 3) + 
+    geom_line() + 
+    labs(y = "total within sum of squares", x = "k") +
+    scale_x_continuous(breaks = 1:50)
+
+assignments %>% 
+  ggplot(aes(x = city_review_ratio_usr, y = stars_usr)) +
+  geom_point(aes(color = .cluster), alpha = 0.5) + 
+  facet_wrap(~ k)
+
+```
+
+```{r}
+
+kmedias <- kmeans(yelp_usr_km, 7)
+
+yelp_usr <- yelp_usr %>% 
+          mutate(cluster_usr = kmedias$cluster)
+
+yelp_usr %>% 
+  ggplot(aes(x = yelping_since_usr, y = stars_usr, color = cluster)) +
+  geom_point(alpha = 0.5)
+
+glimpse(yelp_usr)
+
+
+```
+
+
+
+
+```{r}
+
+library(plotly)
+
+
+fig <- plot_ly(yelp_usr, x = ~yelping_since_usr, 
+               y = ~stars_usr,
+               z = ~stars_rv, color = ~cluster)
+
+fig <- fig %>% add_markers()
+
+fig <- fig %>% layout(scene = list(xaxis = list(title = 'Yelping since'),
+                                   range = c('2000-01-01','2020-01-01'),
+                     yaxis = list(title = 'User Score'),
+                     zaxis = list(title = 'Review Stars')))
+
+fig
+
+
+```
+
+
+# Análise de reviews e tips
+
+[FONTE](https://juliasilge.com/blog/sherlock-holmes-stm/)
+
+```{r}
+
+glimpse(yelp_words)
+
+yelp_usr %>% 
+  count(cluster_usr, group_by = user_id, sort = TRUE)
+
+yelp_usr %>% 
+  count(cluster_usr, group_by = business_id, sort = TRUE)
+
+yelp_usr %>% 
+  count(cluster_usr, group_by = review_id,sort = TRUE)
+```
+
+```{r}
+
+
+yelp_join <- yelp_usr %>% 
+  select(user_id, cluster_usr) %>% 
+  distinct
+
+left_join(yelp_words, yelp_usr$cluster_usr, by = 'review_id' )
+
+yelp_corpus <- yelp_words %>% 
+  select(line, text_clean,stars_rv) %>% 
+  unnest_tokens(word, text_clean) %>% 
+  anti_join(stop_words) %>% 
+  filter(!word %in% c(0,1,2,3,4,5,6,7,8,9)) %>% 
+  filter(!word %in% c('food','service','time','restaurant','chicken'))
+  
+  
+glimpse(stop_words)
+
+yelp_corpus %>%
+    count(word, sort = TRUE)
+
+```
+
+
+## Wordcloud
+Palavras mais utilizadas nas reviews boas:
+```{r}
+
+yelp_corpus %>% 
+  filter(stars >= 4 ) %>% 
+  filter(!word %in%  c('food','service')) %>% 
+  count(word, sort = TRUE) %>% 
+  top_n(100, n) %>% 
+  with(wordcloud(word, n, random.order = FALSE, 
+       colors = brewer.pal(8, "Dark2")))
+```
+
+
+Palavras mais utilizadas nas reviews não boas:
+```{r}
+
+yelp_corpus %>% 
+  filter(stars < 4 ) %>% 
+  filter(!word %in%  c('food','service')) %>% 
+  count(word, sort = TRUE) %>% 
+  top_n(100, n) %>% 
+  with(wordcloud(word, n, random.order = FALSE, 
+       colors = brewer.pal(8, "Dark2")))
+
+```
+
+
+## Modelo de tópicos
+
+### Frequência
+```{r}
+
+yelp_tf_idf <- yelp_corpus %>%
+    count(stars_rv, word, sort = TRUE) %>%
+    bind_tf_idf(word, stars_rv, n) %>%
+    arrange(-tf_idf) %>%
+    group_by(stars_rv) %>%
+    top_n(10) %>%
+    ungroup
+
+yelp_tf_idf %>%
+    mutate(word = reorder_within(word, tf_idf, stars_rv)) %>%
+    ggplot(aes(word, tf_idf, fill = stars_rv)) +
+    geom_col(alpha = 0.8, show.legend = FALSE) +
+    facet_wrap(~stars_rv, scales = "free") +
+    scale_x_reordered() +
+    coord_flip() +
+    #theme(strip.text=element_text(size=11)) +
+    labs(x = NULL, y = "tf-idf",
+         title = "Highest tf-idf words by review stars"
+         #subtitle = "Individual stories focus on different characters and narrative elements"
+         )
+
+```
+
+### Modelo de tópicos
+```{r}
+
+yelp_dfm <- yelp_corpus %>%
+    count(stars_rv, word, sort = TRUE) %>%
+    cast_dfm(stars_rv, word, n)
+
+topic_model <- stm(yelp_dfm, K = 5, 
+                   verbose = FALSE, init.type = "Spectral")
+
+td_beta <- tidy(topic_model)
+
+td_beta %>%
+    group_by(topic) %>%
+    top_n(10, beta) %>%
+    ungroup() %>%
+    mutate(topic = paste0("Topic ", topic),
+           term = reorder_within(term, beta, topic)) %>%
+    ggplot(aes(term, beta, fill = as.factor(topic))) +
+    geom_col(alpha = 0.8, show.legend = FALSE) +
+    facet_wrap(~ topic, scales = "free_y") +
+    coord_flip() +
+    scale_x_reordered() +
+    labs(x = NULL, y = expression(beta),
+         title = "Highest word probabilities for each topic",
+         subtitle = "Same words are associated with different topics")
+
+```
+
+
+### Probabilidades do documento para cada tópico
+
+```{r}
+
+
+td_gamma <- tidy(topic_model, matrix = "gamma",                    
+                 document_names = rownames(yelp_dfm))
+
+ggplot(td_gamma, aes(gamma, fill = as.factor(topic))) +
+  geom_histogram(alpha = 0.8, show.legend = FALSE) +
+  facet_wrap(~ topic, ncol = 3) +
+  labs(title = "Distribution of document probabilities for each topic",
+       subtitle = "Each topic is associated with 1-3 stars",
+       y = "Number of stars", x = expression(gamma))
+
+
+```
+
+### Rede Neural
+
+```{r}
+
+yelp_nn <- yelp_pca %>% 
+  select_if(is.numeric)
+
+set.seed(123)
+
+idx <- sample(c(1, 2, 3), size = nrow(yelp_nn), replace = TRUE)
+  
+x_tr <- select(yelp_nn[idx == 1, ], -stars) %>% 
+          as.matrix()
+          
+y_tr <- as.numeric(yelp_nn$stars[idx == 1])
+
+
+x_val <- select(yelp_nn[idx == 2, ], -stars) %>% 
+          as.matrix()
+
+y_val <- as.numeric(yelp_nn$stars[idx == 2])
+
+
+x_test <- select(yelp_nn[idx == 3, ], -stars) %>% 
+          as.matrix()
+
+y_test <- as.numeric(yelp_nn$stars[idx == 3])
+
+
+```
+
+
+```{r}
+
+## Define
+
+rm(network)
+
+network <- keras_model_sequential() %>% 
+  layer_dense(units = 2, activation = "tanh", input_shape = ncol(x_tr)) %>%
+  layer_dense(units = 4, activation = "relu") %>%
+  layer_dense(units = 1, activation = "sigmoid")
+
+network %>% 
+  compile(optimizer = "rmsprop", 
+          loss = "binary_crossentropy", 
+          metrics = c("accuracy"))
+
+
+```
+
+```{r}
+
+network %>% 
+  fit(x_tr, y_tr, epochs = 80, batch_size = 16, 
+      validation_data = list(x_val, y_val))
+
+
+keras::get_weights(network)
+
+```
+
+
+
+# Referências
+
+- Neumann, D. Material de aula do cursos Big Data e Computação em Nuvem
+- Mendonça, T. Material de aula do curso Modelagem Preditiva Avançada
+- [Fernandez, P. Marques. P. Data Science, Marketing and Business](https://datascience.insper.edu.br/datascience.pdf)
+- [Rahimi, S.; Mottahedi, S.; Liu, X. The Geography of Taste: Using Yelp to Study Urban Culture. ISPRS Int. J. Geo-Inf. 2018, 7, 376.](https://www.mdpi.com/2220-9964/7/9/376?type=check_update&version=1)
+- [Silge, J.](https://juliasilge.com/blog/sherlock-holmes-stm/)
+
+
+
+
