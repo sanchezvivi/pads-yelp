@@ -12,7 +12,7 @@ output:
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, fig.height=5, fig.width=10)
 ```
 
-```{r include=FALSE}
+```{r echo=TRUE, eval=TRUE, include=FALSE}
 
 library(tidyverse)
 library(tidymodels)
