@@ -16,27 +16,14 @@ library(tidymodels)
 library(tidytext)
 library(skimr)
 library(ggrepel)
-library(ggdendro)
 library(factoextra)
 library(vip)
-library(doParallel)
 library(cluster)
 library(plotly)
-
-```
-
-```{r}
-
-library(tidytext)
-library(tm)
-library(wordcloud)
-library(topicmodels)
-library(drlib)
-library(quanteda)
-library(stm)
-
+library(zoo)
 library(keras)
 library(reticulate)
+
 
 ```
 
@@ -68,8 +55,11 @@ Clusterização dos estabelecimentos por semelhança de atributos
 glimpse(yelp_bz_raw)
 
 yelp_bz <- yelp_bz_raw %>% 
-          select_if(~is.numeric(.))
-  
+          select_if(~is.numeric(.)) %>% 
+          mutate_all(~replace(., is.na(.), 0))
+
+glimpse(yelp_bz)
+
 ```
 
 ## PCA
@@ -116,7 +106,7 @@ Mais de 50% da variabilidade é explicada pelas 5 primeiras componentes, que sã
 tidy_pca <- tidy(rec_pca, 2)
 
 tidy_pca %>%
-  filter(component %in% paste0("PC", 1:5)) %>%
+  filter(component %in% paste0("PC", 1:6)) %>%
   group_by(component) %>%
   top_n(10, abs(value)) %>%
   ungroup() %>%
@@ -127,7 +117,7 @@ tidy_pca %>%
   scale_y_reordered() +
   labs(
     x = "Valor absoluto da contribuição",
-    y = NULL, fill = "Positiva?")
+    y = NULL, fill = "Valor > 0")
 
 
 ```
@@ -148,59 +138,6 @@ variance_pct %>%
 ```
 
 Os maiores contrastes são entre..........
-
-## K-means
-
-```{r}
-
-glimpse(yelp_bz_raw)
-
-?kmeans
-
-skim(yelp_bz)
-
-set.seed(123)
-
-kclusts <- tibble(k = 1:50) %>%
-  mutate(kclust = map(k, ~kmeans(yelp_bz, .x)),
-        tidied = map(kclust, tidy),
-        glanced = map(kclust, glance),
-        augmented = map(kclust, augment, yelp_bz)
-        )
-
-clusters <- kclusts %>%
-  unnest(cols = c(tidied))
-
-assignments <- kclusts %>% 
-  unnest(cols = c(augmented))
-
-clusterings <- kclusts %>%
-  unnest(cols = c(glanced))
-
-
-#cotovelo
-clusterings %>% 
-  ggplot(aes(k, tot.withinss)) + 
-    geom_point(size = 3) + 
-    geom_line() + 
-    labs(y = "total within sum of squares", x = "k") +
-    scale_x_continuous(breaks = 1:50)
-
-```
-
-```{r}
-
-set.seed(123)
-kmeans_bz <-  kmeans(yelp_bz, 10)
-
-yelp_bz_cluster <- yelp_bz_raw %>% 
-          select(business_id) %>% 
-          mutate(cluster = kmeans_bz$cluster)
-
-
-write.csv(yelp_bz_cluster, file = "output/bz_cluster.csv")
-
-```
 
 # Users
 
@@ -315,8 +252,8 @@ plot(plot_arvore)
 
 ## Rede Neural
 
-### Treino do modelo
-Leitura da base final
+
+### Leitura da base final
 
 ```{r}
 
@@ -324,6 +261,7 @@ yelp_raw <- list.files(path = 'output/yelp.csv/',
                        pattern = "*.csv",
                        full.names = TRUE) %>% 
             map_df(~read_csv(.))
+
 glimpse(yelp_raw)
 
 ```
@@ -339,6 +277,8 @@ yelp_rv <- yelp_raw %>%
 glimpse(yelp_rv)
 
 ```
+
+### Bases de Treino e Teste
 
 ```{r}
 split <- initial_split(yelp_rv, prop = 0.8 , strata = stars_rv)
@@ -404,6 +344,7 @@ y_test <- yelp_test %>%
 
 ```
 
+### Modelo
 
 ```{r}
 
@@ -414,7 +355,7 @@ yelp_nn <- keras_model_sequential() %>%
   #layer_dropout(rate = 0.5) %>%
   layer_dense(units = 16, activation = "relu") %>%
   #layer_dropout(rate = 0.5) %>%
-  #layer_dense(units = 16, activation = "relu") %>%
+  layer_dense(units = 16, activation = "relu") %>%
   #layer_dense(units = 6, activation = "softmax")
   layer_dense(units = 1, activation = "sigmoid")
 
@@ -439,7 +380,7 @@ keras::get_weights(yelp_nn)
 
 ```
 
-# Desempenho do modelo
+### Desempenho do modelo
 ```{r}
 
 tibble(observado = factor(y_test)) %>% 
@@ -455,7 +396,9 @@ tibble(observado = factor(y_test)) %>%
 
 # Recomendação
 
-Criação de um usuário e definição de seu cluster
+## Usuário criado
+
+- Criação de um usuário e definição de seu cluster
 
 ```{r}
 
@@ -514,48 +457,69 @@ glimpse(user_hist)
 
 ```
 
-## Função para recomendaão
+## Função para recomendação
 
 ```{r}
 
-recommendation <- function(user, reviewed_usr){
+recomm_f <- function(user, reviewed_usr){
   
   to_go <- yelp_raw %>% 
     filter(stars_rv >= 4) %>% 
-    filter(cluster_usr == user$cluster_usr) %>% 
+    #filter(cluster_usr == user$cluster_usr) %>% 
+    filter(cluster_usr == user$cluster) %>% 
     select(business_id) %>% 
-    distinct() # %>% 
-    #left_join(., yelp_bz_raw, by = 'business_id')
+    distinct() 
   
   n_go <- nrow(to_go)
   
   to_review <- user %>% 
             bind_rows(replicate(n_go-1, user, simplify = FALSE)) %>% #replica as informações do usuário
             bind_cols(to_go) %>% #junta os estabelecimentos e notas dadas
-            left_join(., yelp_bz_raw, by = 'business_id')
+            left_join(., yelp_bz_raw, by = 'business_id') %>% 
+            select(-tips_counter, -total_compliments)
 
-  
-user_x_test <- to_review %>% 
+  user_x_test <- to_review %>% 
           select_if(is.numeric) %>% 
           #select(-stars_rv) %>% 
           scale(center = mean, scale = std) %>% 
-          as.matrix() 
+          as.matrix()
 
-predictions <- as_tibble(predict(yelp_nn, user_x_test))
+  predictions <- as_tibble(predict(yelp_nn, user_x_test))
 
   recommendation <- to_review %>% 
     bind_cols(pred = predictions) %>% 
     anti_join(., reviewed_usr, by = 'business_id')
-  
-  glimpse(recommendation)
 
 }
 
 ```
 
+## Usuário aleatório
+
 ```{r}
 
-#top 5 recomendações por categoria
+n <- ceiling(runif(1,1,nrow(yelp_test)))
+
+random_user <- yelp_raw[n,]$user_id
+
+user <- yelp_usr_cluster %>% 
+            filter(user_id == random_user)
+
+reviewed_usr <- yelp_raw %>% 
+  filter(user_id == random_user)
+
+recommentation <- recomm_f(user,reviewed_usr)
+  
+```
+
+
+
+
+## Recomendação
+
+```{r}
+
+#top 5 recomendações
 
   recommendation %>% 
     filter(V1 > 0.5) %>% 
@@ -593,12 +557,11 @@ recommendation %>%
 
 recommendation %>% 
   unnest_tokens(category, categories) %>% 
-  filter(category %in% c('food', 'restaurants','pub','bar','club')) %>% 
+  filter(category %in% c('food', 'restaurants','bar','club')) %>% 
   group_by(category) %>%
   mutate(pred_avg = mean(V1)) %>% 
-  select(name, V1, category, pred_avg) %>% 
-  arrange(-pred_avg) %>% 
   top_n(n = 5, wt = V1) %>% 
+  ungroup() %>% 
   mutate(name = reorder_within(name, -V1, category)) %>%
   ggplot(aes(V1, name, fill = category)) +
   geom_col(show.legend = TRUE) +
