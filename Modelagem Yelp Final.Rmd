@@ -2,14 +2,15 @@
 title: "Integradora Yelp"
 author: "Marcelo Francheschini, Rafael Costa, Viviane Sanchez"
 date: "6/27/2020"
-output: html_document
+output: github_document
+  #html_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
+```{r include=FALSE}
 
 library(tidyverse)
 library(tidymodels)
@@ -23,13 +24,18 @@ library(plotly)
 library(zoo)
 library(keras)
 library(reticulate)
+library(ggmap)
+library(rpart)
+library(partykit)
 
+#rmarkdown::render("Modelagem Yelp Final.Rmd", envir=.GlobalEnv)
 
 ```
 
 # Leitura de arquivos individuais
 
-```{r eval=FALSE, include=FALSE}
+```{r include=FALSE, echo = TRUE}
+
 yelp_bz_raw <- list.files(path = 'output/yelp_bz.csv/', 
                        pattern = "*.csv",
                        full.names = TRUE) %>% 
@@ -46,7 +52,7 @@ yelp_users <- list.files(path = 'output/yelp_usr.csv/',
 
 Clusterização dos estabelecimentos por semelhança de atributos
 
-```{r}
+```{r echo=TRUE}
 
 yelp_bz <- yelp_bz_raw %>% 
           select_if(~is.numeric(.)) %>% 
@@ -60,7 +66,7 @@ glimpse(yelp_bz)
 
 Será aplicada uma análise de componentes principais para entender a variabilidade da nota dos estabelecimentos considerando seus atributos.
 
-```{r}
+```{r echo=TRUE}
   
 rec_pca <- recipe(stars ~ ., yelp_bz) %>% 
   update_role(contains('id'), new_role = 'id') %>% 
@@ -79,7 +85,7 @@ yelp_bz_pca <- juice(rec_pca)
 
 ### Scree plot
 
-```{r}
+```{r echo=TRUE, fig.width= 10, fig.height= 5}
 
 variance_pct <- rec_pca$steps[[2]]$res
 
@@ -95,7 +101,7 @@ Mais de 50% da variabilidade é explicada pelas 5 primeiras componentes, que sã
 
 ### Drivers
 
-```{r}
+```{r echo=TRUE, fig.width= 10, fig.height= 5}
 
 tidy_pca <- tidy(rec_pca, 2)
 
@@ -123,7 +129,7 @@ Além disso, cobrança de rolha e necessidade de levar a bebida também são dri
 
 ## Contrastes
 
-```{r}
+```{r echo=TRUE, fig.width= 10, fig.height= 8}
 
 variance_pct %>% 
   fviz_pca_var(axes = c(1,2), col.var="contrib", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"))
@@ -137,11 +143,11 @@ Os maiores contrastes são entre a modalidade de atendimento dos restaurante: Ap
 
 Classificação dos usuários conforme o perfil.
 
-## KMeans
+## K-Means
 
 Será utilizada a clusterização k-médias por conta da quantidade de características dos usários presentes na base. Também foi tentada a aplicação de uma clusterização hierárquica, mas os resultados obtidos não foram tão interpretáveis como os seguintes.
 
-```{r}
+```{r echo=TRUE, warning=FALSE}
 
 set.seed(123)
 
@@ -169,7 +175,7 @@ clusterings <- kclusts %>%
 
 ```
 
-```{r}
+```{r echo=TRUE}
 
 ### Cotovelo
 
@@ -184,23 +190,23 @@ clusterings %>%
 
 Pelo gráfico do cotovelo, poderiam ser selecionado um número de clusters (k) de 11 a 17, a seguir é possível ver uma comparacão em relação às dicas.
 
-```{r}
+```{r echo=TRUE, fig.width= 10, fig.height= 5}
 
 #k-means
 assignments %>% 
-  filter(k %in% paste0(14:19)) %>%
+  filter(k %in% paste0(10:20)) %>%
   ggplot(aes(x = tips_counter, y = total_compliments)) +
   geom_point(aes(color = .cluster), alpha = 0.5) + 
-  facet_wrap(~ k)
+  facet_wrap(~ k, nrow = 3)
 
 ```
 
 Para a classificação final dos usuário, será feita novamente a clusterização, mas considerando apenas o k ideal.
 
-```{r}
+```{r echo=TRUE}
 
 set.seed(123)
-kmeans_usr <-  kmeans(yelp_pad, 14)
+kmeans_usr <-  kmeans(yelp_pad, 11)
 
 yelp_usr_cluster <- yelp_users %>% 
           mutate(cluster_usr = kmeans_usr$cluster)
@@ -211,7 +217,7 @@ glimpse(yelp_usr_cluster)
 
 Pelo gráfico, observa-se claramente a divisão dos usuários em relação ao tempo na plataforma, a nota média e a quantidade de fãs.
 
-```{r}
+```{r echo=TRUE, fig.width= 10, fig.height= 10}
 
 plot_ly(yelp_usr_cluster, x = ~year_since, 
                y = ~average_stars,
@@ -224,7 +230,7 @@ plot_ly(yelp_usr_cluster, x = ~year_since,
 
 ```
 
-```{r}
+```{r echo=TRUE}
 
 yelp_usr_cluster %>% 
           select(user_id, cluster_usr) %>%
@@ -236,10 +242,7 @@ Como próximos passos, seria interessante  entnder melhor as características de
 
 ## Modelo para definição do cluster do usuário
 
-```{r}
-
-library(rpart)
-library(partykit) 
+```{r echo=TRUE}
 
 user_cluster_tree <- yelp_usr_cluster %>% 
                     select(-user_id) %>% 
@@ -247,7 +250,7 @@ user_cluster_tree <- yelp_usr_cluster %>%
 
 plot_arvore <- as.party(user_cluster_tree)
 
-plot(plot_arvore)
+#plot(plot_arvore)
 
 ```
 
@@ -257,7 +260,7 @@ plot(plot_arvore)
 
 ### Leitura da base final
 
-```{r}
+```{r echo=TRUE, include=FALSE}
 
 yelp_raw <- list.files(path = 'output/yelp.csv/', 
                        pattern = "*.csv",
@@ -361,9 +364,6 @@ yelp_nn <- keras_model_sequential() %>%
   #layer_dense(units = 6, activation = "softmax")
   layer_dense(units = 1, activation = "sigmoid")
 
-
-?keras_model_sequential
-
 yelp_nn %>% 
   compile(optimizer = "rmsprop", 
           #loss = "sparse_categorical_crossentropy", 
@@ -375,6 +375,8 @@ history <- yelp_nn %>%
   fit(x_train, y_train, 
       epochs = 40, batch_size = 512, 
       validation_data = list(x_val, y_val))
+
+plot(history)
 
 keras::get_weights(yelp_nn)
 
@@ -511,12 +513,9 @@ recomm_f <- function(user, reviewed_usr){
 
 ### Recomendação para usuário criado
 
-```{r}
+```{r echo =FALSE, include=TRUE, eval = FALSE}
 
-recommendation_new <- recomm_f(user,reviewed_usr)
-
-
-library(ggmap)
+recommendation_new <- recomm_f(user, reviewed_usr)
 
 Í#mapa com as top 5 recomendações
 
@@ -581,7 +580,7 @@ recommendation <- recomm_f(user,reviewed_usr)
 
 ### Recomendação por categoria
 
-```{r}
+```{r fig.height=5, fig.width=10}
 
 #categorias
 
@@ -611,6 +610,7 @@ recommendation %>%
 - Mendonça, T. Material de aula do curso Modelagem Preditiva Avançada
 - [Fernandez, P. Marques. P. Data Science, Marketing and Business](https://datascience.insper.edu.br/datascience.pdf)
 - [Rahimi, S.; Mottahedi, S.; Liu, X. The Geography of Taste: Using Yelp to Study Urban Culture. ISPRS Int. J. Geo-Inf. 2018, 7, 376.](https://www.mdpi.com/2220-9964/7/9/376?type=check_update&version=1)
+- [Chollet, F. et al, Deep Learning with R](https://www.manning.com/books/deep-learning-with-r)
 - [Silge, J.](https://juliasilge.com/blog/sherlock-holmes-stm/)
 - https://www.datanovia.com/en/lessons/clustering-distance-measures/
 
