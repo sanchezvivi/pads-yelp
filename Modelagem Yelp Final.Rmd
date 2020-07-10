@@ -2,10 +2,10 @@
 title: "Integradora Yelp"
 author: "Marcelo Francheschini, Rafael Costa, Viviane Sanchez"
 date: "6/27/2020"
-#always_allow_html: true
-#output: github_document
-output:
-  html_document: default
+always_allow_html: true
+output: github_document
+#output:
+#  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -36,7 +36,7 @@ library(partykit)
 
 # Leitura de arquivos individuais
 
-```{r include=FALSE, echo = TRUE}
+```{r iecho=TRUE, eval=TRUE, include=FALSE}
 
 yelp_bz_raw <- list.files(path = 'output/yelp_bz.csv/', 
                        pattern = "*.csv",
@@ -568,7 +568,7 @@ rec_user <- recomm_f(user2,reviewed_usr2)
     top_n(5, V1) %>%
     arrange(V1) %>% 
     mutate(rank = as.factor(row_number())) %>% 
-    ggplot(aes(x = V1, y = name, fill = rank)) +
+    ggplot(aes(x = V1, y = name)) +
     geom_col() +
     labs(x = "Probabilidade de avaliação positiva",
     y = 'Recomendação')
@@ -597,21 +597,19 @@ qmplot(longitude, latitude, data = top_5,
 
 ### Recomendação por categoria
 
-```{r fig.height=5, fig.width=10}
+```{r}
 
-#categorias
 rec_user %>% 
   select(name, categories, V1) %>% 
   unnest_tokens(category, categories) %>% 
-  filter(category %in% c('restaurants','bars','nightlife')) %>% 
+  filter(category %in% c('food','restaurants','bars','pub')) %>% 
   group_by(category) %>%
   mutate(pred_avg = mean(V1)) %>% 
-  ungroup() %>% 
+  arrange(desc(V1)) %>% 
   unique() %>% 
-  top_n(n = 5, wt = V1) %>%
-  mutate(name = reorder_within(name, -V1, category)) %>%
+  slice(1:5) %>%
   ggplot(aes(V1, name, fill = category)) +
-  geom_col(show.legend = TRUE) +
+  geom_col(show.legend = FALSE) +
   facet_wrap(~category, scales = 'free') +
   scale_x_continuous() +
   scale_y_reordered() +
@@ -619,9 +617,8 @@ rec_user %>%
 
 ```
 
+
 # Conclusão
-
-
 
 # Referências
 
