@@ -11,7 +11,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, fig.height=5, fig.width=10)
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, fig.retina = 2 ,fig.height=5, fig.width=10)
 ```
 
 # 1. Introdução
@@ -40,7 +40,7 @@ As bases mencionadas foram previamente tratadas em Python/PySpark. Neste relató
 
 ## 2.1. Pacotes
 
-```{r echo=FALSE, results= 'hide'}
+```{r echo = TRUE, tidy=FALSE}
 
 library(tidyverse)
 library(tidymodels)
@@ -65,7 +65,7 @@ library(clue)
 
 ## 2.2. Leitura de arquivos individuais
 
-```{r echo=TRUE, results= 'hide'}
+```{r echo = TRUE, tidy=FALSE}
 
 yelp_bz_raw <- list.files(path = 'output/yelp_bz.csv/', 
                        pattern = "*.csv",
@@ -97,7 +97,7 @@ A seguir, será feita uma análise de componentes principais para entender a var
 
 Em seguida, são removidas as colunas não numéricas (business_id, categories) para a análise e, caso exista algum valor faltando, é substituído por zero.
 
-```{r echo=TRUE, results= 'hide'}
+```{r echo = TRUE, tidy=FALSE}
 
 yelp_bz <- yelp_bz_raw %>% 
           select_if(~is.numeric(.)) %>% 
@@ -317,7 +317,7 @@ Após consolidação da base em Python, é feita a leitura da base e substituiç
 
 Além disso, são mantidas apenas as variáveis numéricas para treinamento da rede neural.
 
-```{r echo=TRUE, results= 'hide'}
+```{r echo = TRUE, tidy=FALSE}
 
 yelp_raw <- list.files(path = 'output/yelp.csv/', 
                        pattern = "*.csv",
@@ -615,17 +615,21 @@ recomm_f <- function(user, reviewed_usr){
 
 A função é então aplicada ao usuário criado com informações aleatórias. Os 5 estabelecimentos com maior probabilidade de avaliação positiva e sua localização são os seguintes.
 
-```{r eval=FALSE, include=FALSE}
+```{r warning=FALSE}
 
-recommendation_new <- recomm_f(user, reviewed_usr)
+rec_new <- recomm_f(user,reviewed_usr)
 
-recommendation_new %>% 
+```
+
+```{r eval=FALSE, warning=FALSE, include=TRUE}
+
+rec_new %>% 
   arrange(-V1) %>% 
   select(name, categories, V1)
 
 Í#mapa com as top 5 recomendações
 
-top_5 <- recommendation_new %>% 
+top_5 <- rec_new %>% 
     top_n(5, V1) %>%
     arrange(-V1) %>% 
     mutate(rank = as.factor(row_number()))
@@ -638,7 +642,9 @@ qmplot(longitude, latitude, data = top_5,
        color = rank,
        size = V1)
 
+
 ```
+
 
 ## 4.3. Usuário aleatório da base
 
@@ -659,6 +665,8 @@ glimpse(user2)
 
 reviewed_usr2 <- yelp_raw %>% 
   filter(user_id == random_user)
+
+glimpse(reviewed_usr)
 
 rec_user <- recomm_f(user2,reviewed_usr2)
   
