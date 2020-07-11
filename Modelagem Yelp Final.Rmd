@@ -701,7 +701,7 @@ qmplot(longitude, latitude, data = top_5,
 ```
 
 
-### 4.3.4.Recomendação por categoria
+### 4.3.2.Recomendação por categoria
 
 O ideal seria fornecer recomendações de acordo com o o que o usuário procura. Por isso, é mostrado abaixo os top 5 estabelecimentos de diferentes categorias.
 
