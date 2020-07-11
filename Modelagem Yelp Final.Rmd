@@ -3,16 +3,16 @@ title: "Integradora Yelp"
 author: "Marcelo Francheschini, Rafael Costa, Viviane Sanchez"
 date: "6/27/2020"
 always_allow_html: true
-output: github_document
-#output:
-#  html_document: default
+#output: github_document
+output:
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, fig.height=5, fig.width=10)
 ```
 
-```{r echo=TRUE, eval=TRUE, include=FALSE}
+```{r echo=FALSE, results= 'hide'}
 
 library(tidyverse)
 library(tidymodels)
@@ -36,7 +36,7 @@ library(partykit)
 
 # Leitura de arquivos individuais
 
-```{r iecho=TRUE, eval=TRUE, include=FALSE}
+```{r echo=TRUE, results= 'hide'}
 
 yelp_bz_raw <- list.files(path = 'output/yelp_bz.csv/', 
                        pattern = "*.csv",
@@ -54,7 +54,7 @@ yelp_users <- list.files(path = 'output/yelp_usr.csv/',
 
 Clusterização dos estabelecimentos por semelhança de atributos
 
-```{r echo=TRUE}
+```{r echo=TRUE, results= 'hide'}
 
 yelp_bz <- yelp_bz_raw %>% 
           select_if(~is.numeric(.)) %>% 
@@ -127,7 +127,7 @@ tidy_pca %>%
 Na primeira componente, os pesos são igualmente distribuídos, o que indica que todos os atributos tem impacto semelhante na maior parte da variabilidade.
 
 Pela segunda componente, no entanto, observa-se que a existência de um local para deixar o casaco, ser permitido fumar e ser um bom local para dançar são mais relevante, assim como a localização (PC6).
-Além disso, cobrança de rolha e necessidade de levar a bebida também são drivers importantes, pois aparecem em mais de uma componente.
+Além disso, cobrança de rolha e necessidade de levar a bebida também são drivers importantes, pois aparecem em mais de uma componente. Importante notar que o nível de preço aparece apenas na 5a componente.
 
 ## Contrastes
 
@@ -262,7 +262,7 @@ plot_arvore <- as.party(user_cluster_tree)
 
 ### Leitura da base final
 
-```{r echo=TRUE, include=FALSE}
+```{r echo=TRUE, results= 'hide'}
 
 yelp_raw <- list.files(path = 'output/yelp.csv/', 
                        pattern = "*.csv",
@@ -450,7 +450,7 @@ user$elite_count <- ceiling(runif(1,0, (2020-user$year_since)))
 user$cluster_usr <- user_cluster_tree %>%
       predict(user) %>% 
       ceiling()
-  
+
 glimpse(user)
 
 # seleção aleatória de estabelecimentos e notas atribuídas a cada um baseado no número de reviews
