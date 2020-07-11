@@ -455,18 +455,32 @@ Com o modelo pronto, é feito um teste na respectiva base. Sua performance é ca
 
 ```{r}
 
-tibble(observado = factor(y_test)) %>% 
-  bind_cols(data.frame(prob = predict(yelp_nn, as.matrix(x_test)))) %>% 
+resultados <- tibble(observado = factor(y_test)) %>% 
+  bind_cols(data.frame(prob = predict(yelp_nn, as.matrix(x_test))))
+
+resultados %>% 
   roc_auc(observado, prob)
 
-tibble(observado = factor(y_test)) %>% 
-  bind_cols(data.frame(prob = predict(yelp_nn, as.matrix(x_test)))) %>% 
+resultados %>% 
   roc_curve(observado, prob) %>% 
   autoplot()
 
 ```
 
-Pelo gráfico, observa-se que o modelo atingiu um desempenho satisfatório na base de teste, considerando que é um problema de recomendação.
+Pelo gráfico, observa-se que o modelo atingiu um desempenho satisfatório na base de teste, considerando que é um problema de recomendação. A seguir, a matriz de confusão do modelo, considerando o corte de 0.50, pois é preferível minimizar os falsos negativos (recomendar um estabelecimento que o usuário não irá gostar) do que os falsos positivos (deixar de recomendar um restaurante que o usuário irá gostar, que pode ser um que ele já tenha avaliado).
+
+```{r}
+
+resultados %>% 
+  mutate(.pred = if_else(prob >= 0.5,1,0)) %>% 
+  mutate(.pred = as.factor(.pred)) %>% 
+  conf_mat(truth = observado, estimate = .pred) %>% 
+  autoplot()
+
+?case
+
+```
+
 
 # 4. Recomendação
 
@@ -480,7 +494,7 @@ glimpse(yelp_usr_cluster)
 
 rm(user)
 
-compliment_max <- 50
+compliment_max <- 100
 
 user <- tibble(user_id = 'random_user',
                average_stars = round(runif(1, 1.0, 5),2),
@@ -515,35 +529,48 @@ user$cluster_usr <- user_cluster_tree %>%
       predict(user) %>% 
       ceiling()
 
+```
+
+Usuário criado:
+
+```{r}
+
 glimpse(user)
+
+```
+
+Em seguida, a partir do número de reviews gerado, é selecionada aleatóriamente a mesma quantidadade de estabelecimentos da base business e atribuídas notas de review aleatórias. Depois, as informações do usuário e dos estabelcimentos são consolidadas em uma base única, como se fosse uma amostra da base original.
+
+```{r}
 
 # seleção aleatória de estabelecimentos e notas atribuídas a cada um baseado no número de reviews
 
 n_reviews <- user$review_count_usr
 
-reviewed_usr <- tibble(business_id = sample(yelp_bz_raw$business_id, n_reviews), #seleçao aleatória de estabelecimentos
-                                            stars_rv = ceiling(runif(n_reviews, 1.0, 5)),
-                                            year_rv = ceiling(runif(n_reviews, 2009, 2019)),
+reviewed_usr <- tibble(business_id = sample(yelp_bz_raw$business_id, 
+                                            n_reviews), #seleçao aleatória de estabelecimentos
+                                            stars_rv = ceiling(runif(n_reviews, 1.0, 5)), #nota
+                                            year_rv = ceiling(runif(n_reviews, 2009, 2019)), #ano da review
                                             )
 user_hist <- user %>% 
             bind_rows(replicate(n_reviews-1, user, simplify = FALSE)) %>% #replica as informações do usuário
             bind_cols(reviewed_usr) %>% #junta os estabelecimentos e notas dadas
             left_join(., yelp_bz_raw, by = 'business_id') #junta as informações dos estabelecimentos
 
-glimpse(user_hist)
+#glimpse(user_hist)
 
 
 ```
 
 ## 4.2. Função para recomendação
 
-Para gerar as recomendações, foi criada uma função para selecionar os possíveis restaurantes que o usuário gostaria de ir e calcular essa probabilidade. Como dados de entrada, devem ser fornecidas as informações do perfil do usuário no yelp e as avaliações de estabelecimentos já visitados.
+Para gerar as recomendações, foi criada uma função para selecionar os possíveis restaurantes que o usuário gostaria de ir e calcular a probabilidade de uma boa avaliação. Como dados de entrada, devem ser fornecidas as informações do perfil do usuário no yelp e as avaliações de estabelecimentos já visitados.
 
-A partir dessas informações, é gerada a base `to_go` que, a partir do cluster do usuário, filtra os restaurantes que ele poderia ir de acordo com as avaliações feitas por usuários de perfil semelhante.
+A partir dessas informações, é gerada a base `to_go` que, a partir do cluster do usuário, filtra os estabelecimentos que ele poderia ir de acordo com as boas avaliações feitas por usuários de perfil semelehante (do mesmo cluster)
 
 Em seguida, na base `to_review`, são cruzadas as informações de avaliações do usuário com a base anterior para criar uma matriz contendo as informações do usuário e dos estabelecimentos que ele ainda não avaliou. Essa base é então normalizada e transoformada em matriz para input no modelo pela base `user_x_test`. 
 
-As previsões de probabilidade do usuário dar uma nota maior ou igual a 4 para os estabelcimentos que ele ainda não visitou são então armazenadas no vetor `predictions`, que é então adicionado à base `to_review`, criando uma tabela única que será utilizada como fonte para as recommendações.
+As previsões de probabilidade do usuário dar uma nota maior ou igual a 4 para os estabelcimentos que ele ainda não visitou são então armazenadas no vetor `predictions`, que é então adicionado à base `to_review`, criando uma tabela única que será utilizada como fonte para as recommendações. Por fim, são filtrados os estabelecimentos com probabilidade maior que 50%.
 
 ```{r}
 
@@ -552,7 +579,6 @@ recomm_f <- function(user, reviewed_usr){
   to_go <- yelp_raw %>% 
     filter(stars_rv >= 4) %>% 
     filter(cluster_usr == user$cluster_usr) %>% 
-    #filter(cluster_usr == user$cluster) %>% 
     select(business_id) %>% 
     distinct() 
   
@@ -585,11 +611,17 @@ recomm_f <- function(user, reviewed_usr){
 
 ```
 
-### Recomendação para usuário criado
+### 4.2.1. Recomendação para usuário criado
+
+A função é então aplicada ao usuário criado com informações aleatórias. Os 5 estabelecimentos com maior probabilidade de avaliação positiva e sua localização são os seguintes.
 
 ```{r eval=FALSE, include=FALSE}
 
 recommendation_new <- recomm_f(user, reviewed_usr)
+
+recommendation_new %>% 
+  arrange(-V1) %>% 
+  select(name, categories, V1)
 
 Í#mapa com as top 5 recomendações
 
@@ -608,7 +640,7 @@ qmplot(longitude, latitude, data = top_5,
 
 ```
 
-## Usuário aleatório da base
+## 4.3. Usuário aleatório da base
 
 Para validar as recomendações, é feito o teste também com um usuário aleatório da base de teste.
 
@@ -623,6 +655,8 @@ n <- ceiling(runif(1,1,nrow(yelp_test)))
 user2 <- yelp_usr_cluster %>% 
             filter(user_id == random_user)
 
+glimpse(user2)
+
 reviewed_usr2 <- yelp_raw %>% 
   filter(user_id == random_user)
 
@@ -630,7 +664,7 @@ rec_user <- recomm_f(user2,reviewed_usr2)
   
 ```
 
-## Recomendação para usuário da base
+### 4.3.1. Recomendação para usuário da base
 
 ```{r}
 
@@ -667,7 +701,9 @@ qmplot(longitude, latitude, data = top_5,
 ```
 
 
-### Recomendação por categoria
+### 4.3.4.Recomendação por categoria
+
+O ideal seria fornecer recomendações de acordo com o o que o usuário procura. Por isso, é mostrado abaixo os top 5 estabelecimentos de diferentes categorias.
 
 ```{r}
 
@@ -690,9 +726,12 @@ rec_user %>%
 ```
 
 
-# Conclusão
+# 5. Conclusão
 
-# Referências
+Foram avaliadas todas as bases do dataset, mas nem todas as informações disponíveis foram utilizadas no modelo.
+Após entender como os atributos dos estabelecimentos impactam na nota, foi feita uma clusterização dos usuários para identificar usuários com perfis semelhantes e utilizar os locais frequentados como base para as recomendacões. Além de fazer uma melhor calibração no modelo, uma possibilidade de otimizar as recomendações seria utilizar as informações de movimento dos estabelecimentos e cruzá-la com os horários em que as avaliações foram feitas, por exemplo.
+
+# 6.  Referências
 
 - Neumann, D. Material de aula do cursos Big Data e Computação em Nuvem
 - Mendonça, T. Material de aula do curso Modelagem Preditiva Avançada
@@ -701,5 +740,6 @@ rec_user %>%
 - [Chollet, F. et al, Deep Learning with R](https://www.manning.com/books/deep-learning-with-r)
 - [Silge, J.](https://juliasilge.com/blog/sherlock-holmes-stm/)
 - https://www.datanovia.com/en/lessons/clustering-distance-measures/
-- Arquivos disponíveis no [repositório](https://github.com/sanchezvivi/pads-yelp)
 - [K-means clustering with tidy data principles](https://www.tidymodels.org/learn/statistics/k-means/)
+
+- Arquivos disponíveis no [repositório](https://github.com/sanchezvivi/pads-yelp)
