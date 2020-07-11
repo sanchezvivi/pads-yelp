@@ -1,16 +1,44 @@
 ---
-title: "Integradora Yelp"
+title: "Sistema de Recomendação de Estabelecimentos em Toronto"
 author: "Marcelo Francheschini, Rafael Costa, Viviane Sanchez"
 date: "6/27/2020"
+institute: "Insper - Programa Avançado em Data Science 2020"
 always_allow_html: true
 #output: github_document
 output:
   html_document: default
+  toc: true
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, fig.height=5, fig.width=10)
 ```
+
+# 1. Introdução
+
+## 1.1. Objetivo
+
+**Criar um sistema de recomendação de estabelecimentos bem avaliados em linha com o perfil do usuário.**
+
+Os dados das seguintes bases fornecidas pelp Yelp para estudos acadêmicos serão analisados
+
+- Business - informações e atributos dos estabelecimentos
+- Users - Informações sobre o perfil do usuário no Yelp
+- Reviews - Texto e atributos de avaliações dos estabelecimentos criadas pelos usuários
+- Tips - Dicas adicionais e atributos deixados pelos usuários
+- Check-ins - Histórico de check-ins por estabelecimento
+
+- [Fonte de dados](https://www.yelp.com/dataset)
+
+Foram selecinados dados de usuários e estabelecimentos abertos em Toronto para treinar um modelo de classificação binária das notas das avaliações e assim *prever se a nota de um estabelecimento que o usuário ainda não avaliou seria boa ou ruim*. A recomendação é dada conforme a maior probabilidade de o usuário dar uma nota alta para aquele lugar.
+
+## 1.2. Tratamento da base
+
+As bases mencionadas foram previamente tratadas em Python/PySpark. Neste relatório, serão analisadas individualmente as informações dos estabelecimentos e de usuários. Além disso, uma base contendo os dados dessas duas bases e das dicas por estabelecimento e usuário foram consolidados em uma base única para modelagem com uma rede neural. Por fim, um usuário fictício é criado para que uma recomendação seja feita. 
+
+# 2. Análise Exploratória
+
+## 2.1. Pacotes
 
 ```{r echo=FALSE, results= 'hide'}
 
@@ -29,12 +57,13 @@ library(reticulate)
 library(ggmap)
 library(rpart)
 library(partykit)
+library(clue)
 
 #rmarkdown::render("Modelagem Yelp Final.Rmd", envir=.GlobalEnv)
 
 ```
 
-# Leitura de arquivos individuais
+## 2.2. Leitura de arquivos individuais
 
 ```{r echo=TRUE, results= 'hide'}
 
@@ -50,9 +79,23 @@ yelp_users <- list.files(path = 'output/yelp_usr.csv/',
 
 ```
 
-# Business
+## 2.3. Business
 
-Clusterização dos estabelecimentos por semelhança de atributos
+A seguir, será feita uma análise de componentes principais para entender a variabilidade da nota dos estabelcimentos conforme seus atributos, que foram codificados numericamente:
+
+- Atributos com True/False como resposta:
+
+    - Null/None: 0
+    - False: 1
+    - True: 2
+    
+- Atributos que possuem uma descrição das características foram substituídas por números como o exemplo:
+
+    - Null/None: 0
+    - Característica 1 - 1
+    - Característica N - N
+
+Em seguida, são removidas as colunas não numéricas (business_id, categories) para a análise e, caso exista algum valor faltando, é substituído por zero.
 
 ```{r echo=TRUE, results= 'hide'}
 
@@ -64,9 +107,9 @@ glimpse(yelp_bz)
 
 ```
 
-## PCA
+### 2.3.1. PCA
 
-Será aplicada uma análise de componentes principais para entender a variabilidade da nota dos estabelecimentos considerando seus atributos.
+A análise PCA é feita com a criação de uma receita pelo pacote tidymodels (`step_pca`). A base processada é extraída com a função `juice`.
 
 ```{r echo=TRUE}
   
@@ -85,7 +128,7 @@ yelp_bz_pca <- juice(rec_pca)
 
 ```
 
-### Scree plot
+#### 2.3.1.1. Scree plot
 
 ```{r echo=TRUE, fig.width= 10, fig.height= 5}
 
@@ -99,9 +142,9 @@ fviz_eig(variance_pct, addlabels = TRUE) +
 
 ```
 
-Mais de 50% da variabilidade é explicada pelas 5 primeiras componentes, que são compostas da seguinte forma:
+Nota-se que mais de 50% da variabilidade é explicada pelas 5 primeiras componentes. Suas composições serão avaliadas no próximo item.
 
-### Drivers
+#### 2.3.1.2. Drivers
 
 ```{r echo=TRUE, fig.width= 10, fig.height= 5}
 
@@ -124,12 +167,14 @@ tidy_pca %>%
 
 ```
 
-Na primeira componente, os pesos são igualmente distribuídos, o que indica que todos os atributos tem impacto semelhante na maior parte da variabilidade.
+Na primeira componente, os pesos são igualmente distribuídos, o que indica que todos os atributos tem impacto semelhante na maior parte da variabilidade. 
 
-Pela segunda componente, no entanto, observa-se que a existência de um local para deixar o casaco, ser permitido fumar e ser um bom local para dançar são mais relevante, assim como a localização (PC6).
-Além disso, cobrança de rolha e necessidade de levar a bebida também são drivers importantes, pois aparecem em mais de uma componente. Importante notar que o nível de preço aparece apenas na 5a componente.
+Pela segunda componente, no entanto, observa-se que a existência de um local para deixar o casaco, ser permitido fumar e ser um bom local para dançar são mais relevantes, assim como a localização (PC6).
+Além disso, cobrança de rolha e necessidade de levar a bebida também são drivers importantes, pois aparecem em mais de uma componente. Importante notar que o nível de preço do estabelecimento aparece apenas na 5a componente.
 
-## Contrastes
+#### 2.3.1.3.Contrastes
+
+Observa-se a interação entre as principais variáveis das duas primeiras compomentes:
 
 ```{r echo=TRUE, fig.width= 10, fig.height= 8}
 
@@ -141,13 +186,13 @@ variance_pct %>%
 
 Os maiores contrastes são entre a modalidade de atendimento dos restaurante: Apenas delivery ou com reservas.
 
-# Users
+## 2.4. Users
 
-Classificação dos usuários conforme o perfil.
+Para fazer recomendações baseadas no perfil do usuário, é necessários agrupá-los de alguma forma. Foram testados os algoritmos de clusterização hierárquica e k-means, mas apenas o último trouxe resultados interpretáveis e satisfatórios.
 
-## K-Means
+### 2.4.1. K-Means
 
-Será utilizada a clusterização k-médias por conta da quantidade de características dos usários presentes na base. Também foi tentada a aplicação de uma clusterização hierárquica, mas os resultados obtidos não foram tão interpretáveis como os seguintes.
+Para definir o número de clusters ideal, é feita uma análise de sensibilidade e aplicado o [algoritmo kmeans no formato tidy]((https://www.tidymodels.org/learn/statistics/k-means/))
 
 ```{r echo=TRUE, warning=FALSE}
 
@@ -177,6 +222,7 @@ clusterings <- kclusts %>%
 
 ```
 
+
 ```{r echo=TRUE}
 
 ### Cotovelo
@@ -190,8 +236,8 @@ clusterings %>%
 
 ```
 
-Pelo gráfico do cotovelo, poderiam ser selecionado um número de clusters (k) de 11 a 17, a seguir é possível ver uma comparacão em relação às dicas.
-
+Pelo gráfico do cotovelo, poderiam ser selecionado um número de clusters (k) de 11 a 17. a seguir é possível ver a eveolução do algoritmo de clusterização em relação às dicas deixadas por usuário e o quanto foram elogiadas pela comunidade.
+ 
 ```{r echo=TRUE, fig.width= 10, fig.height= 5}
 
 #k-means
@@ -203,7 +249,7 @@ assignments %>%
 
 ```
 
-Para a classificação final dos usuário, será feita novamente a clusterização, mas considerando apenas o k ideal.
+Para a classificação final dos usuário, será feita novamente a clusterização, mas considerando apenas o número de clusters `k` ideal.
 
 ```{r echo=TRUE}
 
@@ -213,11 +259,11 @@ kmeans_usr <-  kmeans(yelp_pad, 11)
 yelp_usr_cluster <- yelp_users %>% 
           mutate(cluster_usr = kmeans_usr$cluster)
 
-glimpse(yelp_usr_cluster)
+#glimpse(yelp_usr_cluster)
 
 ```
 
-Pelo gráfico, observa-se claramente a divisão dos usuários em relação ao tempo na plataforma, a nota média e a quantidade de fãs.
+Por fim, observa-se claramente a divisão dos usuários em relação ao tempo na plataforma e a nota média do usuário. Além disso, nota-se diferentes camadas em relação o número de fãs, diferenciando os usuários que teriam um pontecial de impactar o negócio ao deixar uma avaliação.
 
 ```{r echo=TRUE, fig.width= 10, fig.height= 10}
 
@@ -232,6 +278,8 @@ plot_ly(yelp_usr_cluster, x = ~year_since,
 
 ```
 
+A base é então transferida para csv para incluir o número do cluster dos usuários na base final da modelagem.
+
 ```{r echo=TRUE}
 
 yelp_usr_cluster %>% 
@@ -240,9 +288,11 @@ yelp_usr_cluster %>%
 
 ```
 
-Como próximos passos, seria interessante  entnder melhor as características de cada cluster. Para classificar usuário que não estão na base, será utilizado um modelo de árvore para fazer a classificação. O intuito é obter de uma forma rápida o cluster de um novo usuário.
+Como próximos passos, seria interessante entender melhor as características de cada cluster. No relatório em Python é feita uma análise dos textos das avaliações para cada cluster.
 
-## Modelo para definição do cluster do usuário
+Para classificar usuários que não estão na base selecionada, foi feita inicialmente uma árvore de classificação.
+
+### 2.4.2. Modelo para definição do cluster do usuário
 
 ```{r echo=TRUE}
 
@@ -257,10 +307,15 @@ plot_arvore <- as.party(user_cluster_tree)
 ```
 
 
-## Rede Neural
+# 3. Modelagem
 
+## 3.1 Leitura da base final
 
-### Leitura da base final
+Após consolidação da base em Python, é feita a leitura da base e substituição da variável resposta para binária:
+- Notas maiores ou iguais a 4 - boas (1)
+- Notas menores do que 4 - ruim (0)
+
+Além disso, são mantidas apenas as variáveis numéricas para treinamento da rede neural.
 
 ```{r echo=TRUE, results= 'hide'}
 
@@ -285,7 +340,9 @@ glimpse(yelp_rv)
 
 ```
 
-### Bases de Treino e Teste
+## 3.2 Bases de Treino e Teste
+
+A base é divida em treino, validação e teste com a função `split` do pacote tidymodels.
 
 ```{r}
 split <- initial_split(yelp_rv, prop = 0.8 , strata = stars_rv)
@@ -301,7 +358,8 @@ yelp_test <- testing(split)
 
 ```
 
-- Normalização pela média e desvio padrão da base teste
+Calcula-se então a média e desvio padrão da base de treino para utilizar na normalização. (Chollet)
+
 ```{r}
 mean <- yelp_train %>% 
         select(-stars_rv) %>% 
@@ -312,6 +370,7 @@ std <- yelp_train %>%
         apply(., 2, sd)
 ```
 
+Por fim, as bases são normalizadas e transformadas em matriz para otimizar os cálculos na rede neural
 
 ```{r}
 x_train <- yelp_train %>% 
@@ -351,7 +410,9 @@ y_test <- yelp_test %>%
 
 ```
 
-### Modelo
+## 3.3. Rede Neural
+
+Foram testadas diferentes estruturas de rede neural. De qualquer forma, a última camada possui uma função de ativação `sigmoid` para que a resposta seja uma probabilidade de acerto.
 
 ```{r fig.height=5, fig.width=10}
 
@@ -386,9 +447,12 @@ plot(history)
 
 ```
 
-Foi adicionada uma camada de dropout na rede neural, para diminuir o overfit do modelo. Observa-se que foi efeciente, pois a perda da base de validação não ultrappassa a perda da base de treino.
+Foi adicionada uma camada de dropout para diminuir o overfit do modelo. Observa-se que foi efeciente, pois a perda da base de validação não ultrappassa a perda da base de treino. Ainda assim, mais testes de estruturas e otimização poderiam ser feitos para melhorar a performance do modelo.
 
-### Desempenho do modelo
+## 3.4. Desempenho do modelo
+
+Com o modelo pronto, é feito um teste na respectiva base. Sua performance é calculada com a área sob a curva ROC.
+
 ```{r}
 
 tibble(observado = factor(y_test)) %>% 
@@ -402,13 +466,13 @@ tibble(observado = factor(y_test)) %>%
 
 ```
 
-Pelo gráfico, observa-se que o modelo atingiu um desempenho bom na base de teste.
+Pelo gráfico, observa-se que o modelo atingiu um desempenho satisfatório na base de teste, considerando que é um problema de recomendação.
 
-# Recomendação
+# 4. Recomendação
 
-## Usuário criado
+## 4.1. Usuário criado
 
-Criação de um usuário e definição de seu cluster
+Abaixo é criado um usuário com as mesmas informações existentes na base de usuários de forma aleatória. Para definir seu cluster, é utilizada a árvore criada anteriormente.
 
 ```{r}
 
@@ -471,7 +535,15 @@ glimpse(user_hist)
 
 ```
 
-## Função para recomendação
+## 4.2. Função para recomendação
+
+Para gerar as recomendações, foi criada uma função para selecionar os possíveis restaurantes que o usuário gostaria de ir e calcular essa probabilidade. Como dados de entrada, devem ser fornecidas as informações do perfil do usuário no yelp e as avaliações de estabelecimentos já visitados.
+
+A partir dessas informações, é gerada a base `to_go` que, a partir do cluster do usuário, filtra os restaurantes que ele poderia ir de acordo com as avaliações feitas por usuários de perfil semelhante.
+
+Em seguida, na base `to_review`, são cruzadas as informações de avaliações do usuário com a base anterior para criar uma matriz contendo as informações do usuário e dos estabelecimentos que ele ainda não avaliou. Essa base é então normalizada e transoformada em matriz para input no modelo pela base `user_x_test`. 
+
+As previsões de probabilidade do usuário dar uma nota maior ou igual a 4 para os estabelcimentos que ele ainda não visitou são então armazenadas no vetor `predictions`, que é então adicionado à base `to_review`, criando uma tabela única que será utilizada como fonte para as recommendações.
 
 ```{r}
 
@@ -630,3 +702,4 @@ rec_user %>%
 - [Silge, J.](https://juliasilge.com/blog/sherlock-holmes-stm/)
 - https://www.datanovia.com/en/lessons/clustering-distance-measures/
 - Arquivos disponíveis no [repositório](https://github.com/sanchezvivi/pads-yelp)
+- [K-means clustering with tidy data principles](https://www.tidymodels.org/learn/statistics/k-means/)
