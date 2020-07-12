@@ -1,13 +1,13 @@
 ---
 title: "Sistema de Recomendação de Estabelecimentos em Toronto"
-author: "Marcelo Francheschini, Rafael Costa, Viviane Sanchez"
-date: "6/27/2020"
+author: "Marcelo Franceschini, Rafael Costa, Viviane Sanchez"
+date: "6/27/2020 - 7/12/2020"
 institute: "Insper - Programa Avançado em Data Science 2020"
 always_allow_html: true
-#output: github_document
-output:
-  html_document: default
-  toc: true
+output: github_document
+#output:
+#  html_document: default
+#  toc: true
 ---
 
 ```{r setup, include=FALSE}
@@ -15,6 +15,8 @@ knitr::opts_chunk$set(message = FALSE, warning = FALSE, fig.retina = 2 ,fig.heig
 ```
 
 # 1. Introdução
+
+Foram selecinados dados de usuários e estabelecimentos abertos em Toronto para treinar um modelo de classificação binária das notas das avaliações e assim *prever se a nota de um estabelecimento que o usuário ainda não avaliou seria boa ou ruim*. A recomendação é dada conforme a maior probabilidade de o usuário dar uma nota alta para aquele lugar.
 
 ## 1.1. Objetivo
 
@@ -29,8 +31,6 @@ Os dados das seguintes bases fornecidas pelp Yelp para estudos acadêmicos serã
 - Check-ins - Histórico de check-ins por estabelecimento
 
 - [Fonte de dados](https://www.yelp.com/dataset)
-
-Foram selecinados dados de usuários e estabelecimentos abertos em Toronto para treinar um modelo de classificação binária das notas das avaliações e assim *prever se a nota de um estabelecimento que o usuário ainda não avaliou seria boa ou ruim*. A recomendação é dada conforme a maior probabilidade de o usuário dar uma nota alta para aquele lugar.
 
 ## 1.2. Tratamento da base
 
@@ -736,17 +736,25 @@ rec_user %>%
 
 # 5. Conclusão
 
-Foram avaliadas todas as bases do dataset, mas nem todas as informações disponíveis foram utilizadas no modelo.
-Após entender como os atributos dos estabelecimentos impactam na nota, foi feita uma clusterização dos usuários para identificar usuários com perfis semelhantes e utilizar os locais frequentados como base para as recomendacões. Além de fazer uma melhor calibração no modelo, uma possibilidade de otimizar as recomendações seria utilizar as informações de movimento dos estabelecimentos e cruzá-la com os horários em que as avaliações foram feitas, por exemplo.
+Foram avaliadas todas as bases do dataset, mas nem todas as informações disponíveis foram utilizadas no modelo de redes neurais do sistema de recomendação. Após entender com uma análise de componentes principais o impacto dos atributos dos estabelecimentos na nota, foi feita uma clusterização dos usuários para identificar os perfis semelhantes e utilizar os locais frequentados como base para as recomendações. Dessa forma, foi elaborado um classificador para indicação de estabelecimentos por diferentes categorias, de acordo com o que o usuário desejasse visitar. 
 
+## 5.1  Oportunidades de melhorias:
+ 1. Utilizar as informações de movimento dos estabelecimentos e cruzá-la com os horários em que as avaliações foram feitas.
+ 2. Incluir texto de reviews e tips no modelo pela presença de palavras palavras-chave, por modelos de tópicos, por uma análise de sentimentos, ou por "encoding" do texto completo.
+ 3. Criar interface de usuários com Shiny (R).
+ 4. Replicar o algoritmo para outras cidades e estabelecendo 
+ 5. Utilizar a localização do usuário na busca por recomendação.
+     
 # 6.  Referências
 
 - Neumann, D. Material de aula do cursos Big Data e Computação em Nuvem
 - Mendonça, T. Material de aula do curso Modelagem Preditiva Avançada
+- [Documentação PySpark](http://spark.apache.org/docs/latest/api/python/pyspark.sql.html)
+- [StackOverflow](https://stackoverflow.com) - base colaborativa de programadores para solução de erros
 - [Fernandez, P. Marques. P. Data Science, Marketing and Business](https://datascience.insper.edu.br/datascience.pdf)
 - [Rahimi, S.; Mottahedi, S.; Liu, X. The Geography of Taste: Using Yelp to Study Urban Culture. ISPRS Int. J. Geo-Inf. 2018, 7, 376.](https://www.mdpi.com/2220-9964/7/9/376?type=check_update&version=1)
 - [Chollet, F. et al, Deep Learning with R](https://www.manning.com/books/deep-learning-with-r)
-- [Silge, J.](https://juliasilge.com/blog/sherlock-holmes-stm/)
+- [Silge, J., Topic modeling of Sherlock Holmes stories](https://juliasilge.com/blog/sherlock-holmes-stm/)
 - https://www.datanovia.com/en/lessons/clustering-distance-measures/
 - [K-means clustering with tidy data principles](https://www.tidymodels.org/learn/statistics/k-means/)
 
